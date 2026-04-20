@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /*
+   * Brand colors — customize these per client.
+   * These are also editable by the client via the NGF portal (brand.primaryColor, brand.secondaryColor).
+   * The JS in page.tsx reads those values and applies them inline, overriding these defaults.
+   */
+  --primary: #3B82F6;
+  --secondary: #1E40AF;
+  --bg: #ffffff;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --surf
