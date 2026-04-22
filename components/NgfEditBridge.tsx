@@ -34,12 +34,119 @@ export default function NgfEditBridge() {
         pointer-events: none;
       }
 
-      [data-ngf-edit="true"] a,
-      [data-ngf-edit="true"] button {
-        pointer-events: none;
+      /* Navigation popup injected by NgfEditBridge */
+      #ngf-nav-popup {
+        position: fixed;
+        z-index: 2147483647;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.14), 0 1px 4px rgba(0,0,0,0.08);
+        padding: 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 170px;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        pointer-events: auto !important;
+      }
+      #ngf-nav-popup-label {
+        font-size: 11px;
+        color: #94a3b8;
+        padding: 4px 10px 2px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 200px;
+      }
+      #ngf-nav-popup .ngf-nav-btn {
+        all: unset;
+        display: block;
+        width: 100%;
+        box-sizing: border-box;
+        padding: 7px 10px;
+        border-radius: 7px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.12s;
+        white-space: nowrap;
+        pointer-events: auto !important;
+      }
+      #ngf-nav-popup .ngf-go-btn {
+        color: #1d4ed8;
+        background: #eff6ff;
+      }
+      #ngf-nav-popup .ngf-go-btn:hover {
+        background: #dbeafe;
+      }
+      #ngf-nav-popup .ngf-stay-btn {
+        color: #6b7280;
+        background: transparent;
+      }
+      #ngf-nav-popup .ngf-stay-btn:hover {
+        background: #f3f4f6;
       }
     `
     document.head.appendChild(style)
+
+    // ── Nav popup helpers ──────────────────────────────────────────────────────
+    let navPopup: HTMLDivElement | null = null
+
+    function dismissNavPopup() {
+      navPopup?.remove()
+      navPopup = null
+    }
+
+    function showNavPopup(href: string, label: string, clientX: number, clientY: number) {
+      dismissNavPopup()
+
+      const popup = document.createElement('div')
+      popup.id = 'ngf-nav-popup'
+
+      const lbl = document.createElement('div')
+      lbl.id = 'ngf-nav-popup-label'
+      lbl.textContent = label || 'Link'
+      popup.appendChild(lbl)
+
+      const goBtn = document.createElement('button')
+      goBtn.className = 'ngf-nav-btn ngf-go-btn'
+      goBtn.textContent = '→  Go to page'
+      goBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation()
+        dismissNavPopup()
+        window.location.href = href
+      })
+      popup.appendChild(goBtn)
+
+      const stayBtn = document.createElement('button')
+      stayBtn.className = 'ngf-nav-btn ngf-stay-btn'
+      stayBtn.textContent = 'Stay on page'
+      stayBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation()
+        dismissNavPopup()
+      })
+      popup.appendChild(stayBtn)
+
+      popup.style.visibility = 'hidden'
+      document.body.appendChild(popup)
+      navPopup = popup
+
+      const pw = popup.offsetWidth || 180
+      const ph = popup.offsetHeight || 110
+      const vw = window.innerWidth
+      const vh = window.innerHeight
+      let left = clientX
+      let top = clientY + 10
+      if (left + pw + 8 > vw) left = vw - pw - 8
+      if (top + ph + 8 > vh) top = clientY - ph - 10
+      popup.style.left = `${Math.max(8, left)}px`
+      popup.style.top = `${Math.max(8, top)}px`
+      popup.style.visibility = ''
+    }
 
     window.parent.postMessage({ type: 'ngfReady' }, '*')
 
@@ -47,6 +154,7 @@ export default function NgfEditBridge() {
       if (e.data?.type === 'setEditMode') {
         editMode = !!e.data.enabled
         document.documentElement.setAttribute('data-ngf-edit', editMode ? 'true' : 'false')
+        if (!editMode) dismissNavPopup()
       }
 
       if (e.data?.type === 'contentUpdate' && e.data.content) {
@@ -71,12 +179,21 @@ export default function NgfEditBridge() {
       }
     }
 
+    // Capture phase — intercepts before any link/button default handlers
     const clickHandler = (e: MouseEvent) => {
       if (!editMode) return
+
+      // Let clicks inside the nav popup through — the popup manages itself
+      if (navPopup && navPopup.contains(e.target as Node)) return
+
+      // Dismiss popup when clicking anywhere else
+      if (navPopup) dismissNavPopup()
+
       e.preventDefault()
       e.stopPropagation()
       e.stopImmediatePropagation()
 
+      // Walk up DOM looking for data-ngf-field first
       let target = e.target as HTMLElement | null
       while (target && target !== document.documentElement) {
         const attr = target.getAttribute('data-ngf-field')
@@ -103,6 +220,34 @@ export default function NgfEditBridge() {
         }
         target = target.parentElement
       }
+
+      // No editable field — check if a navigable link was clicked
+      target = e.target as HTMLElement | null
+      while (target && target !== document.documentElement) {
+        const tag = target.tagName?.toLowerCase()
+
+        if (tag === 'a') {
+          const anchor = target as HTMLAnchorElement
+          const href = anchor.getAttribute('href') ?? ''
+
+          if (href.startsWith('#')) {
+            // In-page anchor — scroll directly without popup
+            const id = href.slice(1)
+            document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
+          } else if (href && href !== '#') {
+            const label = anchor.textContent?.trim() || anchor.getAttribute('aria-label') || 'Link'
+            showNavPopup(anchor.href, label, e.clientX, e.clientY)
+          }
+          return
+        }
+
+        if (tag === 'button') {
+          // Non-field button — silently block (e.g. mobile menu toggle)
+          return
+        }
+
+        target = target.parentElement
+      }
     }
 
     window.addEventListener('message', messageHandler)
@@ -113,6 +258,7 @@ export default function NgfEditBridge() {
       document.removeEventListener('click', clickHandler, true)
       document.getElementById('ngf-edit-styles')?.remove()
       document.documentElement.removeAttribute('data-ngf-edit')
+      dismissNavPopup()
     }
   }, [])
 
