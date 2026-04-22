@@ -21,6 +21,19 @@ export default function NgfEditBridge() {
         outline-color: #3b82f6 !important;
         background-color: rgba(59,130,246,0.06) !important;
       }
+      /* Empty field placeholder — keeps blank fields clickable in edit mode */
+      [data-ngf-edit="true"] [data-ngf-field]:empty {
+        min-height: 1.2em;
+        min-width: 60px;
+        display: inline-block;
+      }
+      [data-ngf-edit="true"] [data-ngf-field]:empty::before {
+        content: attr(data-ngf-label);
+        color: #94a3b8;
+        font-style: italic;
+        pointer-events: none;
+      }
+
       [data-ngf-edit="true"] a,
       [data-ngf-edit="true"] button {
         pointer-events: none;
@@ -70,12 +83,18 @@ export default function NgfEditBridge() {
         if (attr) {
           const dot = attr.indexOf('.')
           if (dot > -1) {
+            const rect = target.getBoundingClientRect()
             window.parent.postMessage(
               {
                 type: 'fieldClick',
                 section: attr.substring(0, dot),
                 field: attr.substring(dot + 1),
                 currentValue: target.textContent?.trim() ?? '',
+                elementRect: {
+                  top: rect.top, left: rect.left,
+                  bottom: rect.bottom, right: rect.right,
+                  width: rect.width, height: rect.height,
+                },
               },
               '*'
             )
@@ -93,4 +112,9 @@ export default function NgfEditBridge() {
       window.removeEventListener('message', messageHandler)
       document.removeEventListener('click', clickHandler, true)
       document.getElementById('ngf-edit-styles')?.remove()
- 
+      document.documentElement.removeAttribute('data-ngf-edit')
+    }
+  }, [])
+
+  return null
+}

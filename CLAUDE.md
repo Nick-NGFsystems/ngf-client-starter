@@ -69,3 +69,6 @@ site/
   components/
     NgfEditBridge.tsx        ← do not remove
     layout/SiteHeader.tsx
+  lib/
+    ngf.ts                  ← getNgfContent(), getItems()
+```

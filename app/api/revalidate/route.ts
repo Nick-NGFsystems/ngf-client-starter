@@ -15,4 +15,5 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid secret' }, { status: 401 })
   }
 
-  return NextResponse.json({ revali
+  return NextResponse.json({ revalidated: true })
+}

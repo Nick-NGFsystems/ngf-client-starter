@@ -16,4 +16,4 @@ const nextConfig = {
   },
 }
 
-module.exp
+module.exports = nextConfig

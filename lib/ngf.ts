@@ -48,4 +48,9 @@ export function getItems(content: NgfSiteContent, prefix: string): Record<string
       const item: Record<string, string> = {}
       for (const key of keys) {
         if (key.startsWith(itemPrefix)) {
-          item[key.slice(itemPrefix.length)] = content[
+          item[key.slice(itemPrefix.length)] = content[key]
+        }
+      }
+      return item
+    })
+}

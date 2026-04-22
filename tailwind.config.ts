@@ -10,4 +10,4 @@ const config: Config = {
   plugins: [],
 }
 
-export def
+export default config
