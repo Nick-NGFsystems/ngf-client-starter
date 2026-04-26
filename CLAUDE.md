@@ -1,74 +1,99 @@
-# [Client Name] — Project Notes
+# [Client Name] — NGF Client Site
 
-This file covers project-specific details. For universal NGFsystems standards, see `../CLAUDE.md`.
+This repo was scaffolded from `ngf-client-starter`. The NGF portal editor at `app.ngfsystems.com` is wired up on day one — every editable element on every page can be managed by the client without a code change.
 
-The Next.js app lives in this `site/` directory. Run all commands from here.
+## Read this first
+
+The universal foundation for every NGF client website lives at:
+
+- **Canonical URL:** https://raw.githubusercontent.com/Nick-NGFsystems/NGF-Systems-app/main/NGF-STANDARDS.md
+- **In-repo copy** (auto-synced on fork, may lag if the canonical is newer): see `NGF-STANDARDS.md` if present, otherwise fetch the canonical URL above
+
+That doc has:
+
+- Tech-stack rules (client sites use latest stable; only `NGF-Systems-app` itself is pinned)
+- The full NGF portal editor integration spec (`lib/ngf.ts`, `NgfEditBridge`, `data-ngf-*` attribute reference for every field type)
+- Setup checklist for a new site
+- Known issues + every gotcha we've shipped
+- Reference implementations (NorthCove, WrenchTime)
+
+**Read it before you write any code.** This file only covers project-specific overrides.
 
 ---
 
-## What This Project Is
-
-A standalone Next.js 15 client website scaffolded from `ngf-client-starter`. Content is managed by the client through their NGF portal.
-
-**Template ID:** `generic` (set in NGF admin → client config → template_id)
-
----
-
-## Setup Checklist (complete when forking this repo)
+## Setup checklist (complete when forking this repo)
 
 - [ ] Rename the repo to the client's project name
-- [ ] Set `NEXT_PUBLIC_SITE_URL` to the client's domain in Vercel env vars
-- [ ] Set `WEBSITE_REVALIDATION_SECRET` (same value as in NGF app)
-- [ ] In NGF admin, set `site_url` to the client's domain and `template_id` to `generic`
+- [ ] Update `package.json` `name` field
+- [ ] Update `app/layout.tsx` `metadata` with the client's business name
+- [ ] Set `NEXT_PUBLIC_SITE_URL` in Vercel env vars to the client's domain
+- [ ] Set `NGF_APP_URL` (optional — defaults to `https://app.ngfsystems.com`)
+- [ ] Set `WEBSITE_REVALIDATION_SECRET` (must match the value in the NGF app)
 - [ ] Customize brand colors in `app/globals.css` CSS variables
-- [ ] Update `export const metadata` in `app/layout.tsx` with the client's business name
-- [ ] Deploy to Vercel — set Root Directory to `site/` in Vercel project settings
+- [ ] In the NGF admin portal, set this client's `site_url` field to match `NEXT_PUBLIC_SITE_URL` exactly (case, www, trailing slash all normalized)
+- [ ] Deploy to Vercel
+- [ ] Open the client's portal editor — verify every annotated field shows up in the sidebar with real preview text
 
 ---
 
-## Content Fields (generic template)
+## What's already wired up
 
-Fields are defined in `lib/templates/generic.ts` in the NGF-Systems-app repo. Current sections:
-
-| Section | Fields |
+| File | Purpose |
 |---|---|
-| `hero` | `headline`, `subheadline`, `ctaText`, `ctaLink` |
-| `about` | `title`, `body` |
-| `services` | `title`, `items[].title`, `items[].description` |
-| `gallery` | `title`, `photos[].url`, `photos[].caption` |
-| `contact` | `phone`, `email`, `address`, `hours` |
-| `brand` | `businessName`, `tagline`, `primaryColor`, `secondaryColor` |
-
-To add a new field: update `lib/templates/generic.ts` in NGF app AND add `data-ngf-field` + `getNgfContent()` usage in `app/page.tsx` here.
+| `lib/ngf.ts` | `getNgfContent()` + `getItems()` — server-side fetch of published content from the NGF portal. Don't modify. |
+| `components/NgfEditBridge.tsx` | Bridge between the iframe-embedded site and the portal editor. **Don't modify in isolation** — bridge changes propagate from `NGF-Systems-app` and reference sites. If the editor adds a new postMessage type, sync the bridge from a current reference (NorthCove or WrenchTime). |
+| `app/layout.tsx` | Mounts `<NgfEditBridge />` and calls `getNgfContent()` once per page load |
+| `next.config.ts` | CSP `frame-ancestors` header so the portal editor can iframe the site |
+| `app/api/revalidate/route.ts` | Optional webhook the NGF portal pings after publish (uses `WEBSITE_REVALIDATION_SECRET`) |
 
 ---
 
-## Environment Variables
+## Adding new editable content
 
-```
-# Required
-NEXT_PUBLIC_SITE_URL=https://clientdomain.com
-WEBSITE_REVALIDATION_SECRET=<must match NGF app env var>
+The full reference is in NGF-STANDARDS.md → "Self-describing markup — annotation patterns". Short version:
 
-# Optional override
-NGF_APP_URL=https://app.ngfsystems.com
-```
+1. Add a hardcoded fallback wherever the value is rendered:
+   ```tsx
+   const headline = content['hero.headline'] || 'Default headline'
+   ```
+   **Always use `||`, never `??`.** Empty strings only fall through with `||`.
+
+2. Render the element with all four `data-ngf-*` attributes:
+   ```tsx
+   <h1
+     data-ngf-field="hero.headline"
+     data-ngf-label="Headline"
+     data-ngf-type="text"
+     data-ngf-section="Hero"
+   >
+     {headline}
+   </h1>
+   ```
+
+3. Deploy. The editor sidebar picks it up automatically — there is no schema file to maintain. The portal scrapes the live HTML on every editor load and builds the sidebar dynamically.
+
+For **images**, use a plain `<img>` (NOT `next/image` with `fill` — the bridge can't reach the underlying element through the wrapper). For **repeatable groups** (cards the client can add/remove/reorder), put `data-ngf-group` on the container — see the foundation doc.
 
 ---
 
-## Project Structure
+## ⚠ Note: legacy `site/` subdirectory
 
-```
-site/
-  app/
-    layout.tsx              ← includes NgfEditBridge — do not remove
-    page.tsx                ← homepage — fetches all NGF content
-    globals.css             ← Tailwind + CSS brand color variables
-    api/
-      revalidate/route.ts   ← NGF publish webhook
-  components/
-    NgfEditBridge.tsx        ← do not remove
-    layout/SiteHeader.tsx
-  lib/
-    ngf.ts                  ← getNgfContent(), getItems()
-```
+The starter repo has a parallel copy of the app under `site/` from when the layout was a monorepo-y single-deploy structure. **Active development should happen at the repo root.** The `site/` subdir stays in sync via the starter's update process but isn't where you should edit. If you fork this starter, consider deleting the `site/` subdir entirely and configuring Vercel's Root Directory back to `.` (the default).
+
+---
+
+## Known Gaps / Integration Checklist
+
+When finishing a session, add or update an entry here for anything you committed but couldn't verify live.
+
+| Area | Status | Notes |
+|---|---|---|
+| Bridge version | ✅ Current | Synced from NorthCoveBuilders-Mockup main on starter refresh. If the editor adds a new feature after that date, copy the bridge again from a current reference. |
+| `template_id` references | ✅ Removed | This field is deprecated in the NGF database (schema is now scraped from the live site). The starter no longer mentions it. If you see `template_id` in any other doc, that doc is stale. |
+| Legacy `site/` subdirectory | ⚠️ Drifting risk | Same files exist at the repo root and under `site/`. Active edits should go at the root. Vercel deploy can target either; pick one and stick with it. |
+
+---
+
+## Project-specific notes
+
+(Anything unique about THIS client site that an agent would otherwise have to discover by audit goes below this line.)
