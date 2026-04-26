@@ -369,6 +369,99 @@ Put `data-ngf-group` on the container, declare each item's sub-fields in `data-n
 
 ---
 
+## Local development — never deploy to test
+
+The default for every change is **run it locally first.** Don't push speculative work to test on Vercel — it costs build credit and is slower than `npm run dev`.
+
+### `npm run dev` — for 90% of changes
+
+```bash
+cd <repo>
+npm install            # one time
+npm run dev            # opens http://localhost:3000
+```
+
+Hot reload picks up file saves in 1–2 seconds. Edit, save, alt-tab to the browser, see the result. Zero deploys.
+
+### `.env.local` setup
+
+Each repo needs a `.env.local` (gitignored) that mirrors the relevant Vercel env vars. For client sites the minimum is:
+
+```
+NEXT_PUBLIC_SITE_URL=https://yourcustomdomain.com
+NGF_APP_URL=https://app.ngfsystems.com
+```
+
+`NEXT_PUBLIC_SITE_URL` should match `client_configs.site_url` in the NGF database — that way `getNgfContent()` running locally hits the production NGF portal and your local dev shows live published content. To pull every Vercel env var into `.env.local` in one command:
+
+```bash
+npx vercel link        # one time per repo — connects to the Vercel project
+npx vercel env pull    # writes .env.local from Vercel
+```
+
+### `vercel dev` — when you need parity with production
+
+For sites with serverless functions, edge middleware, or Vercel-specific behavior you can't reproduce with `npm run dev`:
+
+```bash
+npx vercel dev         # runs with the full Vercel stack on localhost
+```
+
+Slightly slower startup but identical to production runtime.
+
+### Testing the NGF portal editor integration locally
+
+Editor work is the one case where pure localhost gets in the way — the portal at `app.ngfsystems.com` needs to load your site in an iframe, which means the local dev server has to be reachable from the public internet. Two options:
+
+**A. Tunnel localhost (free, recommended).** Cloudflared works without an account:
+
+```bash
+# one time:
+winget install --id Cloudflare.cloudflared
+# every dev session:
+npm run dev                                       # one terminal
+cloudflared tunnel --url http://localhost:3000    # another terminal
+# prints a public URL like https://random-words.trycloudflare.com
+```
+
+In NGF admin, temporarily set the client's `site_url` to the tunnel URL, open the editor, do your work. Set `site_url` back when done. Hot reload still works through the tunnel.
+
+**B. Skip the editor for visual changes.** If you're iterating on text, layout, or styling — none of that needs the editor in the loop. Open `http://localhost:3000` directly and verify there. Only spin up a tunnel when the change is to bridge behavior, annotation patterns, or anything iframe-specific.
+
+### Type-checking without a build
+
+```bash
+npx tsc --noEmit
+```
+
+Catches every TypeScript error a Vercel build would catch, in 5–10 seconds. Run before pushing if you've made changes that touch types — saves a failed Vercel build.
+
+### Batching commits
+
+Lots of small changes don't need lots of small deploys. Iterate locally with `npm run dev` over an hour, then push the whole batch via the standard NGF push script:
+
+```bash
+python3 github-push.py <repo-name> "feat: redesign hero + new project cards"
+```
+
+The script handles staging, committing, and pushing in one call — uses the GitHub Git Data API with the PAT in `github-push-config.json`. See your global `~/.claude/CLAUDE.md` for the canonical command.
+
+If you want to clean up a series of WIP commits before pushing, the standard `git` flow still works locally:
+
+```bash
+git reset --soft HEAD~5      # undoes the last 5 commits, keeps changes staged
+# now run the push script with one clean commit message:
+python3 github-push.py <repo-name> "feat: real summary"
+```
+
+### What never to do
+
+- **Don't `vercel --prod` from the CLI** unless you mean to deploy straight to production. Plain `vercel deploy` creates a preview URL but still uses build credit. Push-via-Git is the standard path.
+- **Don't push speculative debug commits to test on Vercel.** Reproduce locally; only push when the change is real.
+- **Don't ship a feature without running it locally at least once** — the build can pass and the runtime can still throw. `npm run dev` catches things `npx tsc --noEmit` won't.
+
+---
+
 ## Database — only if the site needs its own data
 
 Most marketing sites don't need a database. If your site has a contact form or service requests:
@@ -398,17 +491,28 @@ Most NGF marketing sites don't need auth. If your site has a logged-in admin or 
 
 ---
 
-## Design system — Apple-inspired refined minimalism
+## Design system — universal rules + per-client aesthetic
 
-Default direction unless the client requests something specific:
+Each client site has its own visual identity — colors, typography, density, theme — driven by the brand the client already has. **Do NOT default every new site to a particular look.** Before designing anything, ask the user what direction this client wants, or look at existing client materials (logo, existing site, brand guide) for cues. Examples in our portfolio:
+- **NorthCove Builders** — light theme, deep navy brand color (`#0f2f57`), serif headings, soft shadows on white cards
+- **WrenchTime Cycles** — bright cyan + orange accents, dark slate panels, technical/industrial typography
 
-- **Light theme** — `bg-white`, `bg-gray-50` backgrounds, `text-gray-900` body
-- Single accent color, subtle depth via `shadow-sm` + `rounded-xl` + `border border-gray-100`
-- Generous whitespace, no heavy gradients, no purple, nothing AI-looking
-- Mobile-first responsive: write the mobile layout, scale up with `md:` and `lg:`
-- 44 px minimum touch targets on mobile
+Both follow the universal rules below. Neither is "the NGF look."
 
-**Don't mix dark and light themes in the same site** — pick one and use it everywhere. If a client site has a dark hero, the rest of the site should be dark too. (We've shipped a regression where the homepage was light and intake/booking were dark — confusing for users and an obvious tell.)
+### Universal rules — apply to every client site regardless of aesthetic
+
+- **Tailwind utility classes for all styling.** Brand colors and spacing tokens live in `app/globals.css` as CSS custom properties; consume them via Tailwind's arbitrary-value syntax: `text-[var(--text)]`, `bg-[var(--bg)]`, `border-[var(--line)]`. Two narrow exceptions where `style={{ … }}` is acceptable: (a) when the value is genuinely dynamic from a JS expression — e.g. `style={{ backgroundColor: brandColor }}` where `brandColor` is a prop; (b) when targeting a CSS property Tailwind doesn't have a utility for (rare). Never write a separate CSS file for component-level styling.
+- **Pick one theme and commit** — light or dark, then use it everywhere. Don't mix dark and light in the same site. We've shipped this regression: homepage light, intake/booking dark — confusing and an obvious tell.
+- **Mobile-first responsive** — write the mobile layout, scale up with `md:` and `lg:`. Every page must work at 375 px / 768 px / 1280 px.
+- **44 px minimum touch targets** on mobile.
+- **Generous whitespace** — most sites we ship err toward dense; tighten if the brief calls for it but the default is breathing room.
+- **No "AI-looking" filler** — heavy gradients, purple-everywhere, generic stock photography, neon glow effects. Specific brand directions can override (a gym site might want neon), but never reach for these as defaults.
+- **TypeScript interfaces for all component props** — no `any`.
+- **Default to server components** — `'use client'` only when strictly necessary (event handlers, hooks, browser APIs).
+
+### When the client hasn't given a direction
+
+Ask first. If you genuinely have to make a call without input, the safest default is light theme + a single brand-matched accent color + soft cards (`shadow-sm rounded-xl border border-gray-100`) + system-ui sans serif. Refined and uncontroversial. But this is a fallback for "we don't have a brief yet," not "the NGF house style." Any real client deserves a real direction.
 
 ---
 
@@ -417,7 +521,7 @@ Default direction unless the client requests something specific:
 These apply to **every** project, client site or main app.
 
 1. TypeScript only — never `.js` files
-2. Tailwind only — never inline styles, never custom CSS for components
+2. Tailwind utility classes for all styling — never write a separate component CSS file. CSS custom properties from `globals.css` are consumed via Tailwind arbitrary-value syntax (`bg-[var(--bg)]`, `text-[var(--text)]`). Inline `style={{ … }}` is permitted only for genuinely dynamic values from JS (e.g. a prop-driven color). See the "Universal rules" in the Design system section for full detail.
 3. `any` is forbidden — use proper interfaces
 4. Never duplicate components, functions, or layouts — check if it exists first
 5. Never hardcode keys, secrets, or connection strings — use env vars
@@ -479,8 +583,7 @@ When in doubt, copy a pattern from one of these:
 6. **Annotate** every new editable text/image with the four `data-ngf-*` attributes
 7. **Verify** every file you wrote with `cat` after editing — never trust silent writes
 8. **Build** — `npm run build` or `npx tsc --noEmit` to confirm no TS errors
-9. **Commit** — descriptive message: `feat: <description>` / `fix: <description>` / `docs: <description>`
-10. **Push** via `python3 github-push.py <repo-name> "<msg>"` — Vercel auto-deploys
+9. **Commit + push** in one call via `python3 github-push.py <repo-name> "<commit message>"` — the script handles staging, commits with the descriptive message you pass (use `feat:` / `fix:` / `docs:` prefixes), and pushes via the GitHub Git Data API. Vercel auto-deploys (or skips, per the `vercel.json` ignore rules)
 
 ---
 
