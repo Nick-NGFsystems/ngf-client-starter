@@ -573,6 +573,11 @@ export default function NgfEditBridge() {
     // ── Click handler ─────────────────────────────────────────────────────────
     const clickHandler = (e: MouseEvent) => {
       if (!editMode) return
+      // Let our own overlay buttons handle their own clicks. Without this,
+      // the capture-phase stopImmediatePropagation below would prevent the
+      // overlay button's click listener from firing at all.
+      const target = e.target as HTMLElement | null
+      if (target?.closest?.('.ngf-image-edit-btn')) return
       if (navPopup && navPopup.contains(e.target as Node)) return
       if (navPopup) dismissNavPopup()
 
