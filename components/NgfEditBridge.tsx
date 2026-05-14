@@ -397,18 +397,18 @@ export default function NgfEditBridge() {
         const walk = (obj: unknown, path: string) => {
           if (obj === null || obj === undefined) return
           if (typeof obj === 'string') {
-            const el = document.querySelector<HTMLElement>(`[data-ngf-field="${path}"]`)
-            if (el) {
-              // Empty string = restore the original SSR value (the hardcoded
-              // fallback for an unpopulated field). For <img>/image fields we
-              // swap `src`; for everything else we swap textContent.
+            // querySelectorAll, not querySelector — when the same field path
+            // is annotated in multiple places (e.g. business name in header
+            // AND footer), all instances update together. The schema scraper
+            // dedupes by path so the sidebar still shows one entry.
+            document.querySelectorAll<HTMLElement>(`[data-ngf-field="${path}"]`).forEach(el => {
               const next = obj === '' ? (el.dataset.ngfDefault ?? '') : obj
               if (isImageField(el)) {
                 el.setAttribute('src', sanitizeImageUrl(next))
               } else {
                 el.textContent = next
               }
-            }
+            })
             return
           }
           if (Array.isArray(obj)) {
