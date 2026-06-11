@@ -33,6 +33,33 @@ export default function NgfEditBridge() {
         font-style: italic;
         pointer-events: none;
       }
+      /* Toggle (show/hide) section that is OFF — only inside the editor it
+         stays visible but dimmed + badged so the client can switch it back on.
+         On the live site it's display:none (set inline by applyToggleState). */
+      [data-ngf-edit="true"] [data-ngf-type="toggle"][data-ngf-hidden="true"] {
+        position: relative;
+        opacity: 0.5 !important;
+        outline: 2px dashed #f59e0b !important;
+        outline-offset: -2px;
+      }
+      [data-ngf-edit="true"] [data-ngf-type="toggle"][data-ngf-hidden="true"]::after {
+        content: "Hidden on your live site";
+        position: absolute;
+        top: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #f59e0b;
+        color: #fff;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 3px 10px;
+        border-radius: 999px;
+        z-index: 5;
+        pointer-events: none;
+        font-family: system-ui, -apple-system, sans-serif;
+        white-space: nowrap;
+      }
+
       /* Pulse highlight when editor scrolls to a field */
       [data-ngf-field].ngf-field-focus {
         animation: ngfFieldFocus 1.6s ease-out;
@@ -47,6 +74,13 @@ export default function NgfEditBridge() {
       [data-ngf-edit="true"] [aria-haspopup],
       [data-ngf-edit="true"] [aria-expanded] {
         cursor: pointer !important;
+      }
+
+      /* Force-reveal the desktop More dropdown in edit mode so its items are clickable */
+      [data-ngf-edit="true"] #desktop-more-menu {
+        pointer-events: auto !important;
+        opacity: 1 !important;
+        transform: translateY(0) !important;
       }
 
       /* Navigation popup injected by NgfEditBridge */
@@ -120,6 +154,7 @@ export default function NgfEditBridge() {
       section: string
       field: string
       value: string
+      fieldType: string   // data-ngf-type value — sent so editor doesn't rely on schema alone
       rect: DOMRect
     }
 
@@ -130,6 +165,7 @@ export default function NgfEditBridge() {
           section: t.section,
           field:   t.field,
           currentValue: t.value,
+          fieldType: t.fieldType,
           elementRect: {
             top:    t.rect.top,
             left:   t.rect.left,
@@ -139,7 +175,7 @@ export default function NgfEditBridge() {
             height: t.rect.height,
           },
         },
-        '*',
+        trustedOrigin ?? 'https://app.ngfsystems.com',
       )
     }
 
@@ -207,8 +243,25 @@ export default function NgfEditBridge() {
     function isImageField(el: HTMLElement) {
       return el.tagName?.toLowerCase() === 'img' || el.getAttribute('data-ngf-type') === 'image'
     }
+    function isToggleField(el: HTMLElement) {
+      return el.getAttribute('data-ngf-type') === 'toggle'
+    }
+    // Show/hide a whole section from a boolean-ish value: '' or 'true' => shown,
+    // 'false' => hidden. On the live site we hard-hide with display:none. Inside
+    // the editor we keep the section in view (dimmed + badged via CSS) so the
+    // client can switch it back on — never strand a section off-screen.
+    function applyToggleState(el: HTMLElement, value: string) {
+      const hidden = value === 'false'
+      el.dataset.ngfHidden = hidden ? 'true' : 'false'
+      if (editMode) {
+        el.style.removeProperty('display')
+      } else {
+        el.style.display = hidden ? 'none' : ''
+      }
+    }
     function captureDefaults() {
       document.querySelectorAll<HTMLElement>('[data-ngf-field]').forEach(el => {
+        if (isToggleField(el)) return   // visibility state, not text — nothing to cache
         if (el.dataset.ngfDefault === undefined) {
           el.dataset.ngfDefault = isImageField(el)
             ? (el as HTMLImageElement).getAttribute('src') ?? ''
@@ -218,31 +271,81 @@ export default function NgfEditBridge() {
     }
     captureDefaults()
 
+    // Track the trusted parent origin once the editor introduces itself.
+    // Initially unknown (could be app.ngfsystems.com or a Vercel preview URL).
+    let trustedOrigin: string | null = null
+
+    // ngfReady goes to '*' because we don't yet know the parent's origin.
+    // After the editor responds with setEditMode we lock in its origin.
     window.parent.postMessage({ type: 'ngfReady' }, '*')
 
+    // Reject image src values that aren't safe — prevents javascript: URIs
+    // or other non-HTTP schemes being injected via a rogue contentUpdate.
+    function sanitizeImageUrl(url: string): string {
+      if (url === '') return ''   // empty = restore default
+      if (/^https?:\/\//i.test(url) || url.startsWith('/') || /^data:image\//i.test(url)) {
+        return url
+      }
+      return ''   // silently drop anything else (javascript:, blob: from untrusted, etc.)
+    }
+
     const messageHandler = (e: MessageEvent) => {
+      // ── Origin guard ────────────────────────────────────────────────────────
+      // Accept messages only from the NGF portal (production or Vercel previews).
+      const isNgfOrigin =
+        e.origin === 'https://app.ngfsystems.com' ||
+        /^https:\/\/[^.]+\.vercel\.app$/.test(e.origin) ||
+        /^http:\/\/localhost(:\d+)?$/.test(e.origin)
+      if (!isNgfOrigin) return
+
+      // Lock in the trusted origin from the first valid message so outbound
+      // postMessages are targeted instead of broadcast to '*'.
+      if (!trustedOrigin) trustedOrigin = e.origin
+
       if (e.data?.type === 'setEditMode') {
         editMode = !!e.data.enabled
         document.documentElement.setAttribute('data-ngf-edit', editMode ? 'true' : 'false')
         // Re-run in case fields were hydrated after initial capture
         captureDefaults()
+        // Toggle sections: entering edit mode reveals any the live site hides
+        // (so the client can switch them back on); leaving restores the live
+        // visibility from the remembered state. The authoritative state arrives
+        // moments later via contentUpdate.
+        document.querySelectorAll<HTMLElement>('[data-ngf-type="toggle"]').forEach(el => {
+          if (editMode) {
+            if (el.style.display === 'none' && el.dataset.ngfHidden === undefined) el.dataset.ngfHidden = 'true'
+            el.style.removeProperty('display')
+          } else {
+            el.style.display = el.dataset.ngfHidden === 'true' ? 'none' : ''
+          }
+        })
         if (!editMode) dismissNavPopup()
       }
 
       if (e.data?.type === 'contentUpdate' && e.data.content) {
         const walk = (obj: unknown, path: string) => {
           if (obj === null || obj === undefined) return
+          if (typeof obj === 'boolean') {
+            // A boolean only carries meaning for a toggle (show/hide) field.
+            const el = document.querySelector<HTMLElement>(`[data-ngf-field="${path}"]`)
+            if (el && isToggleField(el)) applyToggleState(el, obj ? '' : 'false')
+            return
+          }
           if (typeof obj === 'string') {
             const el = document.querySelector<HTMLElement>(`[data-ngf-field="${path}"]`)
             if (el) {
-              // Empty string = restore the original SSR value (the hardcoded
-              // fallback for an unpopulated field). For <img>/image fields we
-              // swap `src`; for everything else we swap textContent.
-              const next = obj === '' ? (el.dataset.ngfDefault ?? '') : obj
-              if (isImageField(el)) {
-                el.setAttribute('src', next)
+              if (isToggleField(el)) {
+                applyToggleState(el, obj)
               } else {
-                el.textContent = next
+                // Empty string = restore the original SSR value (the hardcoded
+                // fallback for an unpopulated field). For <img>/image fields we
+                // swap `src`; for everything else we swap textContent.
+                const next = obj === '' ? (el.dataset.ngfDefault ?? '') : obj
+                if (isImageField(el)) {
+                  el.setAttribute('src', sanitizeImageUrl(next))
+                } else {
+                  el.textContent = next
+                }
               }
             }
             return
@@ -442,13 +545,18 @@ export default function NgfEditBridge() {
         const dot = attr.indexOf('.')
         if (dot > -1) {
           const isImg = isImageField(fieldEl)
+          const isToggle = isToggleField(fieldEl)
+          const ngfType = fieldEl.getAttribute('data-ngf-type') || (isImg ? 'image' : 'text')
           editTarget = {
-            section: attr.substring(0, dot),
-            field:   attr.substring(dot + 1),
-            value:   isImg
+            section:   attr.substring(0, dot),
+            field:     attr.substring(dot + 1),
+            value:     isImg
               ? (fieldEl.getAttribute('src') ?? '')
+              : isToggle
+              ? (fieldEl.dataset.ngfHidden === 'true' ? 'false' : '')
               : (fieldEl.textContent?.trim() ?? ''),
-            rect:    fieldEl.getBoundingClientRect(),
+            fieldType: ngfType,
+            rect:      fieldEl.getBoundingClientRect(),
           }
         }
       }
@@ -467,6 +575,14 @@ export default function NgfEditBridge() {
           return
         }
         if (href && href !== '#') {
+          const isExternal = /^https?:\/\//.test(anchor.href) && !anchor.href.startsWith(window.location.origin)
+          if (isExternal) {
+            // External links never navigate the editor iframe — if the link
+            // wraps an editable field (e.g. a nav label), open the edit
+            // popover directly; otherwise block silently.
+            if (editTarget) postFieldClick(editTarget)
+            return
+          }
           const label = anchor.textContent?.trim() || anchor.getAttribute('aria-label') || 'Link'
           showNavPopup(anchor.href, label, e.clientX, e.clientY, editTarget)
           return
