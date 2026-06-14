@@ -139,6 +139,101 @@ export default function NgfEditBridge() {
       #ngf-nav-popup .ngf-edit-btn:hover {
         background: #f3f4f6;
       }
+
+      /* Image field overlay button — permanent visible affordance for image
+         replacement. Solves the discoverability gap: clients don't always
+         realize they can click an image to change it. Positioned by JS on
+         scroll/resize via requestAnimationFrame. */
+      .ngf-image-edit-btn {
+        position: fixed;
+        z-index: 2147483646;
+        padding: 8px 14px;
+        background: rgba(15, 23, 42, 0.92);
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.2);
+        pointer-events: auto !important;
+        transition: background 0.15s, transform 0.1s;
+        -webkit-backdrop-filter: blur(6px);
+        backdrop-filter: blur(6px);
+        line-height: 1;
+        user-select: none;
+      }
+      .ngf-image-edit-btn:hover {
+        background: rgba(15, 23, 42, 1);
+        transform: scale(1.04);
+      }
+      .ngf-image-edit-btn:active {
+        transform: scale(0.96);
+      }
+      .ngf-image-edit-btn svg {
+        width: 14px;
+        height: 14px;
+        flex-shrink: 0;
+      }
+
+      /* Image-delete X button — only appears on images inside repeatable
+         groups (those that can actually be removed). Top-left corner, red. */
+      .ngf-image-delete-btn {
+        position: fixed;
+        z-index: 2147483646;
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        background: rgba(220, 38, 38, 0.95);
+        color: #fff;
+        border: none;
+        border-radius: 50%;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.2);
+        pointer-events: auto !important;
+        transition: background 0.15s, transform 0.1s;
+        -webkit-backdrop-filter: blur(6px);
+        backdrop-filter: blur(6px);
+        user-select: none;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      }
+      .ngf-image-delete-btn:hover {
+        background: rgba(185, 28, 28, 1);
+        transform: scale(1.08);
+      }
+      .ngf-image-delete-btn:active {
+        transform: scale(0.92);
+      }
+      .ngf-image-delete-btn svg {
+        width: 16px;
+        height: 16px;
+      }
+
+      /* Drag-to-reorder cursor and visual states on image group items. */
+      [data-ngf-edit="true"] [data-ngf-field][data-ngf-draggable="true"] {
+        cursor: grab;
+      }
+      [data-ngf-edit="true"] [data-ngf-field][data-ngf-draggable="true"]:active {
+        cursor: grabbing;
+      }
+      /* Source: image being dragged dims out so user sees what's moving */
+      [data-ngf-edit="true"] [data-ngf-field].ngf-dragging {
+        opacity: 0.35 !important;
+        outline: 2px dashed #3b82f6 !important;
+      }
+      /* Target: image being dragged over gets a bold blue ring */
+      [data-ngf-edit="true"] [data-ngf-field].ngf-drag-target {
+        outline: 3px solid #2563eb !important;
+        outline-offset: 2px;
+        background-color: rgba(37, 99, 235, 0.08) !important;
+      }
     `
     document.head.appendChild(style)
 
@@ -271,6 +366,271 @@ export default function NgfEditBridge() {
     }
     captureDefaults()
 
+    // ── Image edit-button overlay ─────────────────────────────────────────────
+    // Adds a permanent visible "Replace photo" button on every annotated image
+    // when edit mode is on. Reposition on scroll/resize via rAF throttling.
+    const editButtons = new Map<HTMLElement, HTMLButtonElement>()
+
+    function positionEditButton(btn: HTMLButtonElement, img: HTMLElement) {
+      const rect = img.getBoundingClientRect()
+      // Don't overlay buttons on tiny images (logos / icons) or off-screen ones.
+      if (rect.width < 40 || rect.height < 40) {
+        btn.style.display = 'none'
+        return
+      }
+      btn.style.display = ''
+      // Wait for layout, then position 8px from top-right of the image. Clamp
+      // to viewport so the button is always reachable.
+      const btnWidth = btn.offsetWidth || 140
+      const top  = Math.max(8, Math.min(rect.top + 8, window.innerHeight - 50))
+      const left = Math.max(8, Math.min(rect.right - btnWidth - 8, window.innerWidth - btnWidth - 8))
+      btn.style.top  = `${top}px`
+      btn.style.left = `${left}px`
+    }
+
+    function ensureEditButton(el: HTMLElement) {
+      if (!isImageField(el)) return
+      if (editButtons.has(el)) return
+      const btn = document.createElement('button')
+      btn.className = 'ngf-image-edit-btn'
+      btn.type      = 'button'
+      btn.setAttribute('aria-label', 'Replace photo')
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14.74 6.46l-7.55 7.55a2 2 0 0 0-.55 1.06l-.7 3.45 3.45-.7a2 2 0 0 0 1.06-.55l7.55-7.55-3.26-3.26z"/><path d="M16.6 4.6l2.8 2.8"/></svg>Replace photo'
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation()
+        e.preventDefault()
+        const path = el.getAttribute('data-ngf-field') || ''
+        const dot  = path.indexOf('.')
+        const section = dot === -1 ? path : path.slice(0, dot)
+        const field   = dot === -1 ? ''   : path.slice(dot + 1)
+        const value   = (el as HTMLImageElement).getAttribute('src') ?? ''
+        postFieldClick({
+          section, field, value, fieldType: 'image',
+          rect: el.getBoundingClientRect(),
+        })
+      })
+      document.body.appendChild(btn)
+      editButtons.set(el, btn)
+      // Defer initial positioning until after the button has measured itself.
+      requestAnimationFrame(() => positionEditButton(btn, el))
+    }
+
+    function injectAllImageButtons() {
+      document.querySelectorAll<HTMLElement>('[data-ngf-field]').forEach(ensureEditButton)
+    }
+
+    function removeAllImageButtons() {
+      editButtons.forEach(btn => btn.remove())
+      editButtons.clear()
+    }
+
+    // ── Repeatable-group detection ────────────────────────────────────────────
+    // For an image element, returns {group, index} if it lives inside a
+    // [data-ngf-group] AND its data-ngf-field follows the indexed-item pattern
+    // (e.g. "team.members.2.image" inside data-ngf-group="team.members").
+    // Returns null for standalone images (hero, logo, etc.) — those can't be
+    // reordered or removed.
+    function getGroupContext(el: HTMLElement): { group: string; index: number; container: HTMLElement } | null {
+      const path = el.getAttribute('data-ngf-field') || ''
+      const parts = path.split('.')
+      if (parts.length < 3) return null
+      // Find the nearest [data-ngf-group] ancestor whose group path is a
+      // prefix of this field's path.
+      let cursor: HTMLElement | null = el.parentElement
+      while (cursor && cursor !== document.documentElement) {
+        const groupPath = cursor.getAttribute('data-ngf-group')
+        if (groupPath && path.startsWith(groupPath + '.')) {
+          const rest = path.slice(groupPath.length + 1)   // "2.image"
+          const idxStr = rest.split('.')[0]
+          const idx = parseInt(idxStr, 10)
+          if (!isNaN(idx)) {
+            return { group: groupPath, index: idx, container: cursor }
+          }
+        }
+        cursor = cursor.parentElement
+      }
+      return null
+    }
+
+    // ── Image delete overlay (X button) ───────────────────────────────────────
+    // Appears only on images that are part of a repeatable group, since only
+    // those can be removed. Top-left corner, red, clicked → confirms via
+    // window.confirm → posts removeGroupItem to editor.
+    const deleteButtons = new Map<HTMLElement, HTMLButtonElement>()
+
+    function positionDeleteButton(btn: HTMLButtonElement, img: HTMLElement) {
+      const rect = img.getBoundingClientRect()
+      if (rect.width < 60 || rect.height < 60) {
+        btn.style.display = 'none'
+        return
+      }
+      btn.style.display = ''
+      // Top-left of image, with 8px inset. Replace photo sits top-right.
+      const top  = Math.max(8, Math.min(rect.top + 8, window.innerHeight - 40))
+      const left = Math.max(8, rect.left + 8)
+      btn.style.top  = `${top}px`
+      btn.style.left = `${left}px`
+    }
+
+    function ensureDeleteButton(el: HTMLElement) {
+      if (!isImageField(el)) return
+      if (deleteButtons.has(el)) return
+      const ctx = getGroupContext(el)
+      if (!ctx) return   // Not inside a repeatable group — can't delete
+      const btn = document.createElement('button')
+      btn.className = 'ngf-image-delete-btn'
+      btn.type      = 'button'
+      btn.setAttribute('aria-label', 'Remove photo')
+      btn.setAttribute('title', 'Remove this photo')
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>'
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation()
+        e.preventDefault()
+        if (!window.confirm('Remove this photo? You can recover it from version history if needed.')) return
+        const post = (data: Record<string, unknown>) =>
+          window.parent.postMessage(data, trustedOrigin ?? '*')
+        post({ type: 'removeGroupItem', group: ctx.group, index: ctx.index })
+      })
+      document.body.appendChild(btn)
+      deleteButtons.set(el, btn)
+      requestAnimationFrame(() => positionDeleteButton(btn, el))
+    }
+
+    function injectAllDeleteButtons() {
+      document.querySelectorAll<HTMLElement>('[data-ngf-field]').forEach(ensureDeleteButton)
+    }
+
+    function removeAllDeleteButtons() {
+      deleteButtons.forEach(btn => btn.remove())
+      deleteButtons.clear()
+    }
+
+    // ── Drag-to-reorder ───────────────────────────────────────────────────────
+    // HTML5 Drag API. Each image in a repeatable group becomes draggable.
+    // Drop on another image in the same group → moveGroupItem postMessage.
+    // Visual feedback via .ngf-dragging (source) and .ngf-drag-target (hovered).
+    // Touch devices: HTML5 drag doesn't work — falls back to using sidebar arrows.
+    let dragSource: { el: HTMLElement; group: string; index: number } | null = null
+
+    function onDragStart(e: DragEvent) {
+      const el = e.target as HTMLElement
+      const ctx = getGroupContext(el)
+      if (!ctx) return
+      dragSource = { el, group: ctx.group, index: ctx.index }
+      el.classList.add('ngf-dragging')
+      e.dataTransfer?.setData('text/plain', `${ctx.group}|${ctx.index}`)
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+    }
+
+    function onDragOver(e: DragEvent) {
+      if (!dragSource) return
+      const el = e.target as HTMLElement
+      const fieldEl = el.closest?.('[data-ngf-field]') as HTMLElement | null
+      if (!fieldEl || fieldEl === dragSource.el) return
+      const ctx = getGroupContext(fieldEl)
+      if (!ctx || ctx.group !== dragSource.group) return
+      e.preventDefault()    // signal "drop allowed here"
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+      // Highlight only this target — clear any prior highlights
+      document.querySelectorAll('.ngf-drag-target').forEach(n => n.classList.remove('ngf-drag-target'))
+      fieldEl.classList.add('ngf-drag-target')
+    }
+
+    function onDragLeave(e: DragEvent) {
+      const fieldEl = (e.target as HTMLElement).closest?.('[data-ngf-field]') as HTMLElement | null
+      if (fieldEl) fieldEl.classList.remove('ngf-drag-target')
+    }
+
+    function onDrop(e: DragEvent) {
+      if (!dragSource) return
+      e.preventDefault()
+      const el = e.target as HTMLElement
+      const fieldEl = el.closest?.('[data-ngf-field]') as HTMLElement | null
+      if (!fieldEl || fieldEl === dragSource.el) {
+        cleanupDrag()
+        return
+      }
+      const targetCtx = getGroupContext(fieldEl)
+      if (!targetCtx || targetCtx.group !== dragSource.group) {
+        cleanupDrag()
+        return
+      }
+      // Send the move request to the editor — editor updates content state,
+      // bridge's existing moveGroupItem handler re-orders the DOM.
+      window.parent.postMessage(
+        { type: 'moveGroupItem', group: dragSource.group, from: dragSource.index, to: targetCtx.index },
+        trustedOrigin ?? '*',
+      )
+      cleanupDrag()
+    }
+
+    function cleanupDrag() {
+      dragSource?.el.classList.remove('ngf-dragging')
+      document.querySelectorAll('.ngf-drag-target').forEach(n => n.classList.remove('ngf-drag-target'))
+      dragSource = null
+    }
+
+    function enableDrag(el: HTMLElement) {
+      if (!isImageField(el)) return
+      const ctx = getGroupContext(el)
+      if (!ctx) return    // Only images inside repeatable groups
+      if (el.dataset.ngfDraggable === 'true') return    // Already wired
+      el.setAttribute('draggable', 'true')
+      el.dataset.ngfDraggable = 'true'
+      el.addEventListener('dragstart', onDragStart)
+      el.addEventListener('dragover',  onDragOver)
+      el.addEventListener('dragleave', onDragLeave)
+      el.addEventListener('drop',      onDrop)
+      el.addEventListener('dragend',   cleanupDrag)
+    }
+
+    function enableAllDrag() {
+      document.querySelectorAll<HTMLElement>('[data-ngf-field]').forEach(enableDrag)
+    }
+
+    function disableAllDrag() {
+      document.querySelectorAll<HTMLElement>('[data-ngf-draggable="true"]').forEach(el => {
+        el.removeAttribute('draggable')
+        delete el.dataset.ngfDraggable
+        el.removeEventListener('dragstart', onDragStart)
+        el.removeEventListener('dragover',  onDragOver)
+        el.removeEventListener('dragleave', onDragLeave)
+        el.removeEventListener('drop',      onDrop)
+        el.removeEventListener('dragend',   cleanupDrag)
+        el.classList.remove('ngf-dragging', 'ngf-drag-target')
+      })
+    }
+
+    function pruneOrphanButtons() {
+      // Buttons whose image element is no longer in the DOM (e.g. removed
+      // repeatable cards) get cleaned up here on the next animation frame.
+      editButtons.forEach((btn, el) => {
+        if (!document.contains(el)) {
+          btn.remove()
+          editButtons.delete(el)
+        }
+      })
+      deleteButtons.forEach((btn, el) => {
+        if (!document.contains(el)) {
+          btn.remove()
+          deleteButtons.delete(el)
+        }
+      })
+    }
+
+    let positionRAF: number | null = null
+    function schedulePositionUpdate() {
+      if (positionRAF !== null) return
+      positionRAF = window.requestAnimationFrame(() => {
+        pruneOrphanButtons()
+        editButtons.forEach((btn, el) => positionEditButton(btn, el))
+        deleteButtons.forEach((btn, el) => positionDeleteButton(btn, el))
+        positionRAF = null
+      })
+    }
+    window.addEventListener('scroll', schedulePositionUpdate, { passive: true, capture: true })
+    window.addEventListener('resize', schedulePositionUpdate)
+
     // Track the trusted parent origin once the editor introduces itself.
     // Initially unknown (could be app.ngfsystems.com or a Vercel preview URL).
     let trustedOrigin: string | null = null
@@ -319,7 +679,19 @@ export default function NgfEditBridge() {
             el.style.display = el.dataset.ngfHidden === 'true' ? 'none' : ''
           }
         })
-        if (!editMode) dismissNavPopup()
+        if (editMode) {
+          // Add visible "Replace photo" overlay buttons on every image field,
+          // delete-X buttons on every image inside a repeatable group, and
+          // enable drag-to-reorder for those same images.
+          injectAllImageButtons()
+          injectAllDeleteButtons()
+          enableAllDrag()
+        } else {
+          removeAllImageButtons()
+          removeAllDeleteButtons()
+          disableAllDrag()
+          dismissNavPopup()
+        }
       }
 
       if (e.data?.type === 'contentUpdate' && e.data.content) {
@@ -327,27 +699,28 @@ export default function NgfEditBridge() {
           if (obj === null || obj === undefined) return
           if (typeof obj === 'boolean') {
             // A boolean only carries meaning for a toggle (show/hide) field.
-            const el = document.querySelector<HTMLElement>(`[data-ngf-field="${path}"]`)
-            if (el && isToggleField(el)) applyToggleState(el, obj ? '' : 'false')
+            document.querySelectorAll<HTMLElement>(`[data-ngf-field="${path}"]`).forEach(el => {
+              if (isToggleField(el)) applyToggleState(el, obj ? '' : 'false')
+            })
             return
           }
           if (typeof obj === 'string') {
-            const el = document.querySelector<HTMLElement>(`[data-ngf-field="${path}"]`)
-            if (el) {
+            // querySelectorAll, not querySelector — when the same field path
+            // is annotated in multiple places (e.g. business name in header
+            // AND footer), all instances update together. The schema scraper
+            // dedupes by path so the sidebar still shows one entry.
+            document.querySelectorAll<HTMLElement>(`[data-ngf-field="${path}"]`).forEach(el => {
               if (isToggleField(el)) {
                 applyToggleState(el, obj)
-              } else {
-                // Empty string = restore the original SSR value (the hardcoded
-                // fallback for an unpopulated field). For <img>/image fields we
-                // swap `src`; for everything else we swap textContent.
-                const next = obj === '' ? (el.dataset.ngfDefault ?? '') : obj
-                if (isImageField(el)) {
-                  el.setAttribute('src', sanitizeImageUrl(next))
-                } else {
-                  el.textContent = next
-                }
+                return
               }
-            }
+              const next = obj === '' ? (el.dataset.ngfDefault ?? '') : obj
+              if (isImageField(el)) {
+                el.setAttribute('src', sanitizeImageUrl(next))
+              } else {
+                el.textContent = next
+              }
+            })
             return
           }
           if (Array.isArray(obj)) {
@@ -361,6 +734,8 @@ export default function NgfEditBridge() {
           }
         }
         walk(e.data.content, '')
+        // Image src may have changed — update overlay button positions
+        if (editMode) schedulePositionUpdate()
       }
 
       // Editor asks us to scroll the iframe to a specific field + flash it
@@ -423,6 +798,12 @@ export default function NgfEditBridge() {
         })
         group.appendChild(clone)
         clone.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        // Wire up the new card's image fields: edit button + delete button + drag
+        if (editMode) {
+          injectAllImageButtons()
+          injectAllDeleteButtons()
+          enableAllDrag()
+        }
       }
 
       // Editor asks us to reorder two cards within a group. Swap the DOM
@@ -463,6 +844,7 @@ export default function NgfEditBridge() {
             }
           })
         })
+        if (editMode) schedulePositionUpdate()
       }
 
       // Editor asks us to remove a card and re-index subsequent siblings.
@@ -499,12 +881,20 @@ export default function NgfEditBridge() {
             }
           })
         })
+        // Clean up orphan overlay buttons (image elements no longer in DOM)
+        if (editMode) schedulePositionUpdate()
       }
     }
 
     // ── Click handler ─────────────────────────────────────────────────────────
     const clickHandler = (e: MouseEvent) => {
       if (!editMode) return
+      // Let our own overlay buttons handle their own clicks. Without this,
+      // the capture-phase stopImmediatePropagation below would prevent the
+      // overlay button's click listener from firing at all.
+      const target = e.target as HTMLElement | null
+      if (target?.closest?.('.ngf-image-edit-btn')) return
+      if (target?.closest?.('.ngf-image-delete-btn')) return
       if (navPopup && navPopup.contains(e.target as Node)) return
       if (navPopup) dismissNavPopup()
 
@@ -605,6 +995,12 @@ export default function NgfEditBridge() {
     return () => {
       window.removeEventListener('message', messageHandler)
       document.removeEventListener('click', clickHandler, true)
+      window.removeEventListener('scroll', schedulePositionUpdate, true)
+      window.removeEventListener('resize', schedulePositionUpdate)
+      if (positionRAF !== null) window.cancelAnimationFrame(positionRAF)
+      removeAllImageButtons()
+      removeAllDeleteButtons()
+      disableAllDrag()
       document.getElementById('ngf-edit-styles')?.remove()
       document.documentElement.removeAttribute('data-ngf-edit')
       dismissNavPopup()
@@ -613,3 +1009,4 @@ export default function NgfEditBridge() {
 
   return null
 }
+
