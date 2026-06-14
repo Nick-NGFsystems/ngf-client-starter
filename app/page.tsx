@@ -22,6 +22,10 @@ export default async function HomePage() {
   // About
   const aboutTitle = content['about.title'] ?? 'About Us'
   const aboutBody  = content['about.body']  ?? 'We are a locally owned business committed to quality and customer satisfaction.'
+  // Toggle: the client can hide this whole section from the editor. '' / 'true'
+  // => shown (default), 'false' => hidden. Always render the element so the
+  // editor can reveal + dim it; CSS/inline display drives live visibility.
+  const aboutHidden = content['about.visible'] === 'false'
 
   // Services
   const servicesTitle = content['services.title'] ?? 'Our Services'
@@ -88,11 +92,15 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ── About ── */}
+      {/* ── About (toggle-able: client can show/hide this whole section) ── */}
       <section
         id="about"
+        data-ngf-field="about.visible"
+        data-ngf-label="Show About Section"
+        data-ngf-type="toggle"
         data-ngf-section="About"
         className="py-20 px-4"
+        style={aboutHidden ? { display: 'none' } : undefined}
       >
         <div className="mx-auto max-w-4xl">
           <h2

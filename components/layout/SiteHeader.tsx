@@ -33,4 +33,7 @@ export default function SiteHeader({ businessName, content, primaryColor }: Site
           {hasGallery && <Link href="#gallery" className="hover:text-white transition-colors">Gallery</Link>}
           <Link href="#contact" className="hover:text-white transition-colors">Contact</Link>
         </nav>
-      </
+      </div>
+    </header>
+  )
+}
