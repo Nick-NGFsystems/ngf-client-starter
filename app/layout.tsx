@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import NgfEditBridge from '@/components/NgfEditBridge'
+import CookieConsent from '@/components/CookieConsent'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -21,6 +22,9 @@ export default function RootLayout({
       <body className="antialiased bg-white text-gray-900">
         <NgfEditBridge />
         {children}
+        {/* Only shows when NEXT_PUBLIC_COOKIE_ANALYTICS=1 (site loads cookie-based
+            analytics). Gate GA/Clarity/etc. behind hasCookieConsent(). */}
+        <CookieConsent />
       </body>
     </html>
   )
