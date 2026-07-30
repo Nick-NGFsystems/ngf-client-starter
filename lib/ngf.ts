@@ -25,6 +25,18 @@ export async function getNgfContent(): Promise<NgfSiteContent> {
 }
 
 /**
+ * The NGF public API base + this site's domain, for the booking widget (which
+ * calls the public availability/bookings endpoints from the browser). Read on
+ * the server and passed into the client widget as props.
+ */
+export function ngfEndpoints(): { base: string; domain: string } {
+  return {
+    base: process.env.NGF_APP_URL || 'https://app.ngfsystems.com',
+    domain: getDomain(),
+  }
+}
+
+/**
  * Extract a dynamic array of items from flat dot-notation content.
  * e.g. getItems(content, 'services.items') returns array of objects from keys like
  * 'services.items.0.title', 'services.items.1.title', etc.
