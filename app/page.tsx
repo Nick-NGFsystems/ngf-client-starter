@@ -2,44 +2,42 @@ import Link from 'next/link'
 import SiteHeader from '@/components/layout/SiteHeader'
 import { getNgfContent, getItems } from '@/lib/ngf'
 
-export const dynamic = 'force-dynamic'
-
 export default async function HomePage() {
   const content = await getNgfContent()
 
   // Brand
-  const businessName  = content['brand.businessName']  ?? 'Your Business'
-  const tagline       = content['brand.tagline']       ?? ''
-  const primaryColor  = content['brand.primaryColor']  ?? '#3B82F6'
-  const secondaryColor = content['brand.secondaryColor'] ?? '#1E40AF'
+  const businessName  = content['brand.businessName']  || 'Your Business'
+  const tagline       = content['brand.tagline']       || ''
+  const primaryColor  = content['brand.primaryColor']  || '#3B82F6'
+  const secondaryColor = content['brand.secondaryColor'] || '#1E40AF'
 
   // Hero
-  const heroHeadline    = content['hero.headline']    ?? 'Welcome to Our Business'
-  const heroSubheadline = content['hero.subheadline'] ?? 'We provide professional services you can trust.'
-  const heroCtaText     = content['hero.ctaText']     ?? 'Get in Touch'
-  const heroCtaLink     = content['hero.ctaLink']     ?? '#contact'
+  const heroHeadline    = content['hero.headline']    || 'Welcome to Our Business'
+  const heroSubheadline = content['hero.subheadline'] || 'We provide professional services you can trust.'
+  const heroCtaText     = content['hero.ctaText']     || 'Get in Touch'
+  const heroCtaLink     = content['hero.ctaLink']     || '#contact'
 
   // About
-  const aboutTitle = content['about.title'] ?? 'About Us'
-  const aboutBody  = content['about.body']  ?? 'We are a locally owned business committed to quality and customer satisfaction.'
+  const aboutTitle = content['about.title'] || 'About Us'
+  const aboutBody  = content['about.body']  || 'We are a locally owned business committed to quality and customer satisfaction.'
   // Toggle: the client can hide this whole section from the editor. '' / 'true'
   // => shown (default), 'false' => hidden. Always render the element so the
   // editor can reveal + dim it; CSS/inline display drives live visibility.
   const aboutHidden = content['about.visible'] === 'false'
 
   // Services
-  const servicesTitle = content['services.title'] ?? 'Our Services'
+  const servicesTitle = content['services.title'] || 'Our Services'
   const services      = getItems(content, 'services.items')
 
   // Gallery
-  const galleryTitle = content['gallery.title'] ?? 'Gallery'
+  const galleryTitle = content['gallery.title'] || 'Gallery'
   const gallery      = getItems(content, 'gallery.photos')
 
   // Contact
-  const contactPhone   = content['contact.phone']   ?? ''
-  const contactEmail   = content['contact.email']   ?? ''
-  const contactAddress = content['contact.address'] ?? ''
-  const contactHours   = content['contact.hours']   ?? ''
+  const contactPhone   = content['contact.phone']   || ''
+  const contactEmail   = content['contact.email']   || ''
+  const contactAddress = content['contact.address'] || ''
+  const contactHours   = content['contact.hours']   || ''
 
   const hasGallery  = gallery.length > 0
   const hasServices = services.length > 0
