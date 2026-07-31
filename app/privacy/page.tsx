@@ -2,8 +2,6 @@ import Link from 'next/link'
 import SiteHeader from '@/components/layout/SiteHeader'
 import { getNgfContent } from '@/lib/ngf'
 
-export const dynamic = 'force-dynamic'
-
 // ─────────────────────────────────────────────────────────────────────────────
 // STARTER PRIVACY & COOKIE POLICY — plain-English boilerplate for a small
 // business marketing site with a contact/booking/quote form + basic analytics.
