@@ -320,6 +320,9 @@ export default async function HomePage() {
         <p className="mt-4 text-xs opacity-50">
           {`© ${new Date().getFullYear()} ${businessName}. All rights reserved.`}
         </p>
+        <p className="mt-2 text-xs opacity-70">
+          <Link href="/privacy" className="underline hover:opacity-100">Privacy &amp; Cookie Policy</Link>
+        </p>
       </footer>
     </div>
   )
