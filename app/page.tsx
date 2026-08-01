@@ -1,9 +1,11 @@
 import Link from 'next/link'
 import SiteHeader from '@/components/layout/SiteHeader'
-import { getNgfContent, getItems } from '@/lib/ngf'
+import { getNgfContent, getItems, ngfEndpoints } from '@/lib/ngf'
+import LeadForm from '@/components/LeadForm'
 
 export default async function HomePage() {
   const content = await getNgfContent()
+  const { base: ngfBase, domain: ngfDomain } = ngfEndpoints()
 
   // Brand
   const businessName  = content['brand.businessName']  || 'Your Business'
@@ -286,6 +288,14 @@ export default async function HomePage() {
                 </p>
               </div>
             )}
+          </div>
+
+          {/* Lead capture — posts to the central NGF lead store (persist-first),
+              and lands in the client's portal under Form Submissions. Do NOT
+              replace this with a bespoke /api/contact route: that is exactly
+              how sites ended up email-only and losing leads. */}
+          <div className="mx-auto mt-10 max-w-2xl">
+            <LeadForm base={ngfBase} domain={ngfDomain} formType="contact" />
           </div>
         </div>
       </section>
