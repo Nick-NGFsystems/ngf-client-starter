@@ -190,12 +190,34 @@ if (fieldCount === 0) {
 }
 
 // Repeatable groups: declared once, and exactly two path segments deep.
+//
+// The value may be a string literal, a template literal with interpolation
+// (`property.${slug}.images`), or a bare JSX identifier (data-ngf-group={g}).
+// For template literals we substitute a placeholder for each ${...} so the
+// SEGMENT COUNT is still checked — that is what actually matters. A bare
+// identifier can't be resolved statically, so it is surfaced for manual review
+// rather than silently passing.
+// The bridge is library code the site copies verbatim — it CONTAINS selector
+// strings like `[data-ngf-group="${e.data.group}"]` which are not annotations.
+// Scanning it produces phantom findings, so exclude it from markup checks.
+const MARKUP_FILES = FILES.filter((f) => !/NgfEditBridge\.tsx?$/.test(f.path))
+
 const groupDecls = new Map()
-for (const f of FILES) {
-  for (const m of f.src.matchAll(/data-ngf-group=["'{`]+([a-zA-Z0-9_.]+)/g)) {
-    const path = m[1]
+const dynamicGroups = new Set()
+for (const f of MARKUP_FILES) {
+  // literal:  data-ngf-group="a.b"  |  data-ngf-group={`a.${x}.b`}
+  for (const m of f.src.matchAll(/data-ngf-group=(?:["']([^"']+)["']|\{`([^`]+)`\})/g)) {
+    const raw = m[1] ?? m[2]
+    const path = raw.replace(/\$\{[^}]*\}/g, '_')
     groupDecls.set(path, (groupDecls.get(path) ?? 0) + 1)
   }
+  // bare identifier: data-ngf-group={someVar}
+  for (const m of f.src.matchAll(/data-ngf-group=\{([A-Za-z_$][\w$]*)\}/g)) {
+    dynamicGroups.set?.(m[1]) ?? dynamicGroups.add(`${f.path} → {${m[1]}}`)
+  }
+}
+if (dynamicGroups.size) {
+  warn('Group path is computed at runtime', `${[...dynamicGroups].join(', ')} — cannot be checked statically. Verify by hand that the resolved value is EXACTLY two segments (section.array); if it is deeper, add/remove/reorder silently no-op.`)
 }
 const dupGroups = [...groupDecls.entries()].filter(([, n]) => n > 1).map(([p]) => p)
 dupGroups.length
