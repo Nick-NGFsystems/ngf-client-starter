@@ -204,12 +204,22 @@ const MARKUP_FILES = FILES.filter((f) => !/NgfEditBridge\.tsx?$/.test(f.path))
 
 const groupDecls = new Map()
 const dynamicGroups = new Set()
+const dupWithinFile = new Set()
 for (const f of MARKUP_FILES) {
+  const seenHere = new Map()
   // literal:  data-ngf-group="a.b"  |  data-ngf-group={`a.${x}.b`}
   for (const m of f.src.matchAll(/data-ngf-group=(?:["']([^"']+)["']|\{`([^`]+)`\})/g)) {
     const raw = m[1] ?? m[2]
     const path = raw.replace(/\$\{[^}]*\}/g, '_')
     groupDecls.set(path, (groupDecls.get(path) ?? 0) + 1)
+    // The duplicate rule is about ONE PAGE declaring a group twice (the classic
+    // desktop + mobile layout mistake), which makes the editor show two
+    // identical sidebar sections. The SAME group legitimately appears on
+    // several pages — e.g. a team list rendered on both / and /team — and the
+    // scraper only ever reads one page, so counting across files is a false
+    // positive. Track per-file.
+    seenHere.set(path, (seenHere.get(path) ?? 0) + 1)
+    if (seenHere.get(path) === 2) dupWithinFile.add(`${f.path} → ${path}`)
   }
   // bare identifier: data-ngf-group={someVar}
   for (const m of f.src.matchAll(/data-ngf-group=\{([A-Za-z_$][\w$]*)\}/g)) {
@@ -219,9 +229,8 @@ for (const f of MARKUP_FILES) {
 if (dynamicGroups.size) {
   warn('Group path is computed at runtime', `${[...dynamicGroups].join(', ')} — cannot be checked statically. Verify by hand that the resolved value is EXACTLY two segments (section.array); if it is deeper, add/remove/reorder silently no-op.`)
 }
-const dupGroups = [...groupDecls.entries()].filter(([, n]) => n > 1).map(([p]) => p)
-dupGroups.length
-  ? fail('One data-ngf-group per list', `Declared more than once: ${dupGroups.join(', ')}. The editor sidebar will show duplicate sections (usually a desktop+mobile layout both carrying the attribute).`)
+dupWithinFile.size
+  ? fail('One data-ngf-group per list', `Declared twice in the SAME file: ${[...dupWithinFile].join(', ')}. The editor sidebar will show duplicate sections — usually a desktop and a mobile layout both carrying the attribute. Declare the group once; individual field annotations on both layouts are fine.`)
   : ok('One data-ngf-group per list')
 
 const badDepth = [...groupDecls.keys()].filter((p) => p.split('.').length !== 2)
