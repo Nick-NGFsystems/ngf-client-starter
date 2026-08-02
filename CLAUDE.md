@@ -78,12 +78,6 @@ For **images**, use a plain `<img>` (NOT `next/image` with `fill` — the bridge
 
 ---
 
-## ⚠ Note: legacy `site/` subdirectory
-
-The starter repo has a parallel copy of the app under `site/` from when the layout was a monorepo-y single-deploy structure. **Active development should happen at the repo root.** The `site/` subdir stays in sync via the starter's update process but isn't where you should edit. If you fork this starter, consider deleting the `site/` subdir entirely and configuring Vercel's Root Directory back to `.` (the default).
-
----
-
 ## Known Gaps / Integration Checklist
 
 When finishing a session, add or update an entry here for anything you committed but couldn't verify live.
@@ -92,7 +86,6 @@ When finishing a session, add or update an entry here for anything you committed
 |---|---|---|
 | Bridge version | ✅ Canonical | This repo IS the source of truth (v1.0.0). Client sites run `npm run sync-ngf` to pull from here. Never sync in the other direction — an audit found 7 of 9 live sites on a drifted bridge, caused by the old copy-from-a-reference-site instruction. |
 | `template_id` references | ✅ Removed | This field is deprecated in the NGF database (schema is now scraped from the live site). The starter no longer mentions it. If you see `template_id` in any other doc, that doc is stale. |
-| Legacy `site/` subdirectory | ⚠️ Drifting risk | Same files exist at the repo root and under `site/`. Active edits should go at the root. Vercel deploy can target either; pick one and stick with it. |
 
 ---
 
