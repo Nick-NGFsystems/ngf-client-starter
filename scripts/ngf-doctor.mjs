@@ -197,6 +197,36 @@ if (!has('components/NgfEditBridge.tsx')) {
   }
 }
 
+// ── 3bb. No local copy of the standards doc ──────────────────────────────────
+// The canonical doc lives in ngf-client-starter and is fetched over a raw URL.
+// A fork inherits the file, and from that moment it is a stale snapshot that a
+// future session will read INSTEAD of the canonical one. That is exactly how
+// three client repos ended up carrying a 604-line copy whose only unique content
+// was the withdrawn "copy the bridge from a reference site" instruction.
+// The starter itself is the one legitimate holder, so exempt it.
+{
+  const isStarter = (() => {
+    try { return read('.git/config')?.includes('ngf-client-starter') ?? false } catch { return false }
+  })()
+  if (has('NGF-STANDARDS.md') && !isStarter) {
+    const local = read('NGF-STANDARDS.md') ?? ''
+    // A short pointer stub is fine — it exists to redirect, not to be read as the standard.
+    const isStub = local.length < 3000 && /raw\.githubusercontent\.com/.test(local)
+    if (isStub) {
+      ok('No local standards copy', 'Pointer stub only.')
+    } else {
+      fail(
+        'No local standards copy',
+        `This repo carries its own NGF-STANDARDS.md (${local.split('\n').length} lines). It is stale by ` +
+          `definition — the canonical doc lives in ngf-client-starter and is fetched over a raw URL. ` +
+          `Delete it, or replace it with a short stub linking to the canonical copy.`,
+      )
+    }
+  } else if (!isStarter) {
+    ok('No local standards copy')
+  }
+}
+
 // ── 3c. Canonical files are syncable, not hand-maintained ────────────────────
 // The bridge and friends are copied per-site rather than installed, which is how
 // 7 of 9 live sites ended up on a drifted bridge. sync-ngf.mjs makes the copy
@@ -249,6 +279,33 @@ if (!cfg) {
   /frame-ancestors[^;]*app\.ngfsystems\.com/.test(cfg)
     ? ok('CSP frame-ancestors', 'Portal editor can iframe this site.')
     : fail('CSP frame-ancestors', "Missing the app.ngfsystems.com allowance — the editor's live preview will be blocked by the browser.")
+
+  // Next.js assembles headers into a plain object — set-cookie is the only key
+  // that accumulates, everything else is last-write-wins across ALL rules. Two
+  // Content-Security-Policy entries therefore ship as ONE header and one policy
+  // is destroyed with no warning: either the security baseline or frame-ancestors,
+  // depending on order. Verified empirically against a real `next start`.
+  const cspEntries = (cfg.match(/['"]Content-Security-Policy['"]/g) ?? []).length
+  if (cspEntries > 1) {
+    fail(
+      'One CSP header only',
+      `${cspEntries} Content-Security-Policy entries in next.config. Next emits only the LAST one — the ` +
+        `other policy is silently dropped (baseline directives or frame-ancestors, depending on order). ` +
+        `Merge them: frame-ancestors is a DIRECTIVE inside the single policy, not a second header.`,
+    )
+  } else if (cspEntries === 1) {
+    // A lone frame-ancestors policy is a legal CSP, so nothing errors — the site
+    // just has no baseline. 5 of 9 audited sites were in exactly this state.
+    const baseline = ['default-src', 'object-src', 'base-uri', 'form-action']
+    const missing = baseline.filter((d) => !cfg.includes(d))
+    missing.length
+      ? warn(
+          'CSP baseline directives',
+          `CSP has frame-ancestors but is missing ${missing.join(', ')}. The site is iframe-protected but ` +
+            `otherwise unrestricted. Copy the full policy from NGF-STANDARDS "Security baseline".`,
+        )
+      : ok('CSP baseline directives')
+  }
 
   for (const [key, label] of [
     ['X-Content-Type-Options', 'X-Content-Type-Options'],

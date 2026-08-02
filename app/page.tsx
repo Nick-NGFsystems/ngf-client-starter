@@ -3,6 +3,37 @@ import SiteHeader from '@/components/layout/SiteHeader'
 import { getNgfContent, getItems, ngfEndpoints } from '@/lib/ngf'
 import LeadForm from '@/components/LeadForm'
 
+// Placeholder rows for the repeatable groups below. These exist so the group
+// containers are ALWAYS present in the rendered HTML — the portal scrapes this
+// page to build the editor sidebar, and an absent container means the client
+// has no "+ Add" button and can never create their first item. Replace the copy
+// with the client's real services during scaffolding; once they publish, their
+// content replaces these entirely.
+const DEFAULT_SERVICES = [
+  { title: 'First Service',  description: 'Describe this service in a sentence or two.' },
+  { title: 'Second Service', description: 'Describe this service in a sentence or two.' },
+  { title: 'Third Service',  description: 'Describe this service in a sentence or two.' },
+]
+
+const DEFAULT_GALLERY = [
+  { url: '', caption: 'Add a photo' },
+  { url: '', caption: 'Add a photo' },
+  { url: '', caption: 'Add a photo' },
+]
+
+// Neutral grey tile shown until a real photo is set. Inline data-URI so an empty
+// gallery still renders a clickable <img> the editor can target — an <img> that
+// isn't rendered can't be clicked, and the client could never set the first photo.
+const PLACEHOLDER_IMAGE =
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400">' +
+      '<rect width="400" height="400" fill="#e5e7eb"/>' +
+      '<text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="#9ca3af" ' +
+      'font-family="system-ui,sans-serif" font-size="20">Click to set image</text>' +
+      '</svg>',
+  )
+
 export default async function HomePage() {
   const content = await getNgfContent()
   const { base: ngfBase, domain: ngfDomain } = ngfEndpoints()
@@ -41,8 +72,14 @@ export default async function HomePage() {
   const contactAddress = content['contact.address'] || ''
   const contactHours   = content['contact.hours']   || ''
 
-  const hasGallery  = gallery.length > 0
-  const hasServices = services.length > 0
+  // NEVER gate an annotated section on content being non-empty. The portal
+  // builds its editor sidebar by scraping this page's HTML — a section hidden
+  // behind `{items.length > 0 && …}` simply is not in the HTML, so the group
+  // never appears in the editor and a brand-new client can never add their
+  // first card without a code change. Always render, and fall back to these
+  // placeholders so the scraper always sees a populated group.
+  const displayServices = services.length > 0 ? services : DEFAULT_SERVICES
+  const displayGallery  = gallery.length  > 0 ? gallery  : DEFAULT_GALLERY
 
   return (
     <div className="min-h-screen" style={{ color: '#1f2937' }}>
@@ -125,8 +162,7 @@ export default async function HomePage() {
       </section>
 
       {/* ── Services ── */}
-      {hasServices && (
-        <section
+      <section
           id="services"
           data-ngf-section="Services"
           className="py-20 px-4 bg-gray-50"
@@ -151,7 +187,7 @@ export default async function HomePage() {
               data-ngf-item-fields='[{"key":"title","label":"Service Name","type":"text"},{"key":"description","label":"Description","type":"textarea"}]'
               className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3"
             >
-              {services.map((svc, i) => (
+              {displayServices.map((svc, i) => (
                 <div key={i} className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                   <h3
                     data-ngf-field={`services.items.${i}.title`}
@@ -177,11 +213,9 @@ export default async function HomePage() {
             </div>
           </div>
         </section>
-      )}
 
       {/* ── Gallery ── */}
-      {hasGallery && (
-        <section
+      <section
           id="gallery"
           data-ngf-section="Gallery"
           className="py-20 px-4"
@@ -206,28 +240,43 @@ export default async function HomePage() {
               data-ngf-item-fields='[{"key":"url","label":"Image URL","type":"image"},{"key":"caption","label":"Caption","type":"text"}]'
               className="mt-12 grid grid-cols-2 gap-4 md:grid-cols-3"
             >
-              {gallery.map((photo, i) => (
+              {displayGallery.map((photo, i) => (
                 <div key={i} className="aspect-square overflow-hidden rounded-2xl bg-gray-100">
-                  {photo.url && (
-                    <img
-                      src={photo.url}
-                      alt={photo.caption ?? `Photo ${i + 1}`}
-                      className="h-full w-full object-cover transition-transform duration-300 hover:scale-105"
-                    />
-                  )}
+                  {/* Every sub-field declared in data-ngf-item-fields must ALSO be
+                      annotated on a real element, or the editor can list it in the
+                      sidebar while the bridge has nothing to patch — edits appear to
+                      do nothing in the live preview. Render the <img> unconditionally
+                      for the same reason the section is unconditional. */}
+                  <img
+                    src={photo.url || PLACEHOLDER_IMAGE}
+                    alt={photo.caption || `Photo ${i + 1}`}
+                    data-ngf-field={`gallery.photos.${i}.url`}
+                    data-ngf-label="Photo"
+                    data-ngf-type="image"
+                    data-ngf-section="Gallery"
+                    className="h-full w-full object-cover transition-transform duration-300 hover:scale-105"
+                  />
+                  <span
+                    data-ngf-field={`gallery.photos.${i}.caption`}
+                    data-ngf-label="Caption"
+                    data-ngf-type="text"
+                    data-ngf-section="Gallery"
+                    className="sr-only"
+                  >
+                    {photo.caption || `Photo ${i + 1}`}
+                  </span>
                 </div>
               ))}
             </div>
           </div>
         </section>
-      )}
 
       {/* ── Contact ── */}
       <section
         id="contact"
         data-ngf-section="Contact"
         className="py-20 px-4"
-        style={{ backgroundColor: hasGallery ? '#f9fafb' : undefined }}
+        style={{ backgroundColor: '#f9fafb' }}
       >
         <div className="mx-auto max-w-4xl">
           <h2 className="text-3xl font-bold text-gray-900">Contact Us</h2>

@@ -6,7 +6,7 @@ This repo was scaffolded from `ngf-client-starter`. The NGF portal editor at `ap
 
 The universal foundation for every NGF client website lives at:
 
-- **Canonical URL:** https://raw.githubusercontent.com/Nick-NGFsystems/NGF-Systems-app/main/NGF-STANDARDS.md
+- **Canonical URL:** https://raw.githubusercontent.com/Nick-NGFsystems/ngf-client-starter/main/NGF-STANDARDS.md
 - **Never keep an in-repo copy.** Always fetch the canonical URL above — a repo-local `NGF-STANDARDS.md` is stale by definition.
 
 That doc has:
@@ -25,6 +25,8 @@ That doc has:
 
 - [ ] Rename the repo to the client's project name
 - [ ] Update `package.json` `name` field
+- [ ] **Delete `NGF-STANDARDS.md` from your fork.** It is canonical *here* and stale everywhere else — always fetch the raw URL. `npm run doctor` fails if a fork keeps a full copy.
+- [ ] **Check `vercel.json` has no `"git": { "deploymentEnabled": false }`** — that key belongs only to the template repo, and a fork that inherits it silently never deploys
 - [ ] **`npm run sync-ngf`** — pull the canonical bridge / `lib/ngf.ts` / `LeadForm` / `CookieConsent` / doctor. Do this first and never hand-edit what it writes.
 - [ ] Keep `metadata.other['ngf-public-api']` in `app/layout.tsx` — without a binding marker the admin cannot set this client's `site_url` (422) and the site can never be attached to a portal account
 - [ ] Update `app/layout.tsx` `metadata` with the client's business name
