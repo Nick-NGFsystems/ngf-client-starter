@@ -159,6 +159,61 @@ if (!has('components/NgfEditBridge.tsx')) {
   mounted
     ? ok('NgfEditBridge mounted')
     : fail('NgfEditBridge mounted', 'Not rendered in app/layout.tsx — the bridge only works when mounted in the root layout.')
+
+  // Presence + mounting are not enough: a hand-written STUB passes both and then
+  // silently does nothing. The sidebar still populates (the portal scrapes raw
+  // HTML, not the running bridge), so the site looks fully wired while every
+  // click is dead. Check the bridge actually implements the protocol.
+  const bridge = read('components/NgfEditBridge.tsx') ?? ''
+  const BRIDGE_MIN_BYTES = 20000 // canonical is ~43 KB; the smallest real one shipped is ~24 KB
+  const required = ['ngfReady', 'setEditMode', 'contentUpdate', 'fieldClick', 'ngfDefault']
+  const missingHandlers = required.filter((h) => !bridge.includes(h))
+  if (missingHandlers.length) {
+    fail(
+      'NgfEditBridge is the real bridge',
+      `Missing protocol handler(s): ${missingHandlers.join(', ')}. This looks like a stub or a ` +
+        `hand-written reimplementation. Copy the canonical file from ngf-client-starter — a partial ` +
+        `bridge fails SILENTLY (sidebar populates, clicking does nothing), which is worse than none.`,
+    )
+  } else if (bridge.length < BRIDGE_MIN_BYTES) {
+    fail(
+      'NgfEditBridge is the real bridge',
+      `Only ${bridge.length} bytes — the canonical bridge is ~43 KB. This is a truncated or partial copy. ` +
+        `Re-copy components/NgfEditBridge.tsx from ngf-client-starter.`,
+    )
+  } else {
+    ok('NgfEditBridge is the real bridge', `${(bridge.length / 1024).toFixed(0)} KB, all protocol handlers present.`)
+  }
+}
+
+// ── 3b. Portal binding marker (the site must be BINDABLE) ────────────────────
+// Setting client_configs.site_url is gated server-side: the admin fetches the
+// site and refuses with 422 unless the HTML carries an NGF marker. site_url is
+// the ONLY string joining a portal account to a website, so failing this means
+// the site can never be attached to a client — no content, no editor, ever.
+// Annotated fields now count as markers, so a properly annotated site passes
+// either way; the meta tag is what saves a site with no annotations yet.
+{
+  const layout = FILES.find((f) => /app[\\/]layout\.tsx?$/.test(f.path))
+  const annotated = FILES.some((f) => /data-ngf-(field|group)/.test(f.src))
+  const hasMeta = layout ? /ngf-public-api/.test(layout.src) : false
+
+  if (hasMeta) {
+    ok('Portal binding marker', "app/layout.tsx declares 'ngf-public-api'.")
+  } else if (annotated) {
+    warn(
+      'Portal binding marker',
+      "app/layout.tsx has no 'ngf-public-api' meta tag. Binding still works (data-ngf-* markup " +
+        'counts), but add it to metadata.other so the site stays bindable even before any field is annotated.',
+    )
+  } else {
+    fail(
+      'Portal binding marker',
+      "No 'ngf-public-api' meta tag in app/layout.tsx and no data-ngf-* markup anywhere. The admin " +
+        'cannot set this client\'s site_url (422), so the site can never be bound to a portal account. ' +
+        "Add to app/layout.tsx: metadata.other = { 'ngf-public-api': 'https://app.ngfsystems.com/api/public/content' }",
+    )
+  }
 }
 
 // ── 4. CSP / security headers ────────────────────────────────────────────────
@@ -198,6 +253,40 @@ if (!vercelJson) {
   warn('vercel.json ignoreCommand', 'No ignoreCommand — docs-only commits still trigger builds.')
 } else {
   ok('vercel.json ignoreCommand')
+}
+
+// ── 6b. The doctor itself must live in this repo ─────────────────────────────
+// A `doctor` script pointing at ../ngf-client-starter resolves on the machine
+// that wrote it and nowhere else — not on Vercel, not in a fresh clone, not in
+// CI. The launch gate then silently cannot run in the only environment where it
+// matters. Auditing a sibling repo from the CLI is fine; leaving it in
+// package.json is not.
+{
+  const pkgRaw = read('package.json')
+  if (!pkgRaw) {
+    fail('Doctor is self-contained', 'No package.json found.')
+  } else {
+    let doctorScript = ''
+    try {
+      doctorScript = (JSON.parse(pkgRaw).scripts ?? {}).doctor ?? ''
+    } catch {
+      /* malformed package.json is reported elsewhere */
+    }
+    if (!doctorScript) {
+      warn('Doctor is self-contained', 'No "doctor" script in package.json — add "doctor": "node scripts/ngf-doctor.mjs".')
+    } else if (doctorScript.includes('..')) {
+      fail(
+        'Doctor is self-contained',
+        `"doctor": "${doctorScript}" points outside the repo. It does not resolve on Vercel or in a fresh ` +
+          `clone, so the launch gate cannot run in CI. Copy scripts/ngf-doctor.mjs into this repo and use ` +
+          `"doctor": "node scripts/ngf-doctor.mjs".`,
+      )
+    } else if (!has('scripts/ngf-doctor.mjs')) {
+      fail('Doctor is self-contained', 'scripts/ngf-doctor.mjs is missing from this repo.')
+    } else {
+      ok('Doctor is self-contained')
+    }
+  }
 }
 
 // ── 7. Content fallback correctness (?? vs ||) ───────────────────────────────
