@@ -110,6 +110,41 @@ if (!revPath) {
   }
 }
 
+// ── 2b. Lead capture reaches the central store ───────────────────────────────
+// Every enquiry must be PERSISTED before it is emailed. Email-only routes lose
+// the lead outright when a send fails, and they never appear in the client's
+// portal. Two conformant shapes: <LeadForm> (posts straight to the store, no
+// site route at all), or relayLeadToNgf() called inside an existing route.
+{
+  const API_ROUTES = FILES.filter((f) => /app[\\/]api[\\/].*route\.tsx?$/.test(f.path))
+  const MAILERS = /resend|Resend|sendMail|nodemailer|sendContactNotification|sendNotificationEmail/
+  // A lead route either mails someone OR just stores contact details. Catch
+  // BOTH: a route that persists an enquiry and notifies nobody is the worse
+  // failure — the business never learns a customer got in touch at all.
+  const looksLikeLead = (src) =>
+    /export\s+async\s+function\s+POST/.test(src) &&
+    (MAILERS.test(src) || (/\bemail\b/i.test(src) && /\b(name|phone)\b/i.test(src)))
+  const mailing = API_ROUTES.filter((f) => looksLikeLead(f.src) && !/revalidate|\bngf-lead\b/.test(f.path))
+  const relayed = mailing.filter((f) => /relayLeadToNgf/.test(f.src))
+  const orphaned = mailing.filter((f) => !/relayLeadToNgf/.test(f.src))
+  const usesLeadForm = FILES.some((f) => /<LeadForm[\s/>]/.test(f.src))
+
+  if (orphaned.length) {
+    fail(
+      'Lead capture reaches the portal',
+      `${orphaned.map((f) => f.path).join(', ')} send email but never call relayLeadToNgf(). ` +
+        `A failed send loses the enquiry with no record anywhere, and nothing shows in the client's ` +
+        `Form Submissions inbox. Call relayLeadToNgf() before the send, or replace the form with <LeadForm>.`,
+    )
+  } else if (mailing.length || usesLeadForm) {
+    ok('Lead capture reaches the portal', usesLeadForm && !mailing.length
+      ? '<LeadForm> posts directly to the central store.'
+      : `${relayed.length} form route${relayed.length === 1 ? '' : 's'} relay to the central store.`)
+  } else {
+    warn('Lead capture reaches the portal', 'No form route and no <LeadForm> found — this site captures no enquiries.')
+  }
+}
+
 // ── 3. Editor bridge ─────────────────────────────────────────────────────────
 if (!has('components/NgfEditBridge.tsx')) {
   fail('NgfEditBridge present', 'Missing — the portal editor cannot enter edit mode on this site.')
