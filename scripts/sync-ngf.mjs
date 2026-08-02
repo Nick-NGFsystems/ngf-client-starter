@@ -139,6 +139,7 @@ async function main() {
   const changed = []
   const drifted = []
   const failed = []
+  const seeded = [] // 'once' files created fresh — these need adapting, see below
 
   for (const item of MANIFEST) {
     const dest = join(ROOT, item.path)
@@ -180,6 +181,7 @@ async function main() {
     mkdirSync(dirname(dest), { recursive: true })
     writeFileSync(dest, remote)
     changed.push(item.path)
+    if (item.mode === 'once') seeded.push(item.path)
     const v = bridgeVersion(remote)
     console.log(`${C.y}↻${C.x} ${item.path} ${C.d}— ${exists ? 'updated' : 'created'}${v ? `, v${v}` : ''}${C.x}`)
   }
@@ -229,6 +231,21 @@ async function main() {
   console.log(`  ${C.d}Review with 'git diff', then run 'npm run doctor'.${C.x}`)
   if (changed.includes('components/NgfEditBridge.tsx')) {
     console.log(`  ${C.d}Bridge changed — redeploy before testing the portal editor.${C.x}`)
+  }
+
+  // A freshly-seeded 'once' file is canonical boilerplate that has NOT been
+  // adapted to this site yet. It imports the starter's layout components with
+  // the starter's prop signatures, so it will usually fail to typecheck until
+  // you wire it up. Saying so here turns a confusing build error into an
+  // expected next step.
+  if (seeded.length) {
+    console.log('')
+    console.log(`${C.y}!${C.x} ${C.b}${seeded.length} file(s) were seeded and still need adapting:${C.x}`)
+    for (const p of seeded) console.log(`    ${p}`)
+    console.log(`  ${C.d}These are starting points, not drop-ins — they reference the starter's layout${C.x}`)
+    console.log(`  ${C.d}components and prop shapes. Expect typecheck errors until you wire them to${C.x}`)
+    console.log(`  ${C.d}this site's own components. They are yours now; sync-ngf will not touch them again.${C.x}`)
+    console.log(`  ${C.d}Run 'npx tsc --noEmit' to see what needs changing.${C.x}`)
   }
 }
 
