@@ -7,7 +7,7 @@ This repo was scaffolded from `ngf-client-starter`. The NGF portal editor at `ap
 The universal foundation for every NGF client website lives at:
 
 - **Canonical URL:** https://raw.githubusercontent.com/Nick-NGFsystems/NGF-Systems-app/main/NGF-STANDARDS.md
-- **In-repo copy** (auto-synced on fork, may lag if the canonical is newer): see `NGF-STANDARDS.md` if present, otherwise fetch the canonical URL above
+- **Never keep an in-repo copy.** Always fetch the canonical URL above — a repo-local `NGF-STANDARDS.md` is stale by definition.
 
 That doc has:
 
@@ -15,7 +15,7 @@ That doc has:
 - The full NGF portal editor integration spec (`lib/ngf.ts`, `NgfEditBridge`, `data-ngf-*` attribute reference for every field type)
 - Setup checklist for a new site
 - Known issues + every gotcha we've shipped
-- Reference implementations (NorthCove, WrenchTime)
+- Reference implementation: **this repo**. Do not copy integration files from a live client site.
 
 **Read it before you write any code.** This file only covers project-specific overrides.
 
@@ -25,6 +25,8 @@ That doc has:
 
 - [ ] Rename the repo to the client's project name
 - [ ] Update `package.json` `name` field
+- [ ] **`npm run sync-ngf`** — pull the canonical bridge / `lib/ngf.ts` / `LeadForm` / `CookieConsent` / doctor. Do this first and never hand-edit what it writes.
+- [ ] Keep `metadata.other['ngf-public-api']` in `app/layout.tsx` — without a binding marker the admin cannot set this client's `site_url` (422) and the site can never be attached to a portal account
 - [ ] Update `app/layout.tsx` `metadata` with the client's business name
 - [ ] Set `NEXT_PUBLIC_SITE_URL` in Vercel env vars to the client's domain
 - [ ] Set `NGF_APP_URL` (optional — defaults to `https://app.ngfsystems.com`)
@@ -41,7 +43,7 @@ That doc has:
 | File | Purpose |
 |---|---|
 | `lib/ngf.ts` | `getNgfContent()` + `getItems()` — server-side fetch of published content from the NGF portal. Don't modify. |
-| `components/NgfEditBridge.tsx` | Bridge between the iframe-embedded site and the portal editor. **Don't modify in isolation** — bridge changes propagate from `NGF-Systems-app` and reference sites. If the editor adds a new postMessage type, sync the bridge from a current reference (NorthCove or WrenchTime). |
+| `components/NgfEditBridge.tsx` | Bridge between the iframe-embedded site and the portal editor. **Never hand-edit, and never copy it from a client site** — run `npm run sync-ngf`. It exports `NGF_BRIDGE_VERSION`; `npm run doctor` reads it and `npm run sync-ngf:check` fails on drift. THIS repo is the canonical source. |
 | `app/layout.tsx` | Mounts `<NgfEditBridge />` and calls `getNgfContent()` once per page load |
 | `next.config.ts` | CSP `frame-ancestors` header so the portal editor can iframe the site |
 | `app/api/revalidate/route.ts` | Optional webhook the NGF portal pings after publish (uses `WEBSITE_REVALIDATION_SECRET`) |
@@ -88,7 +90,7 @@ When finishing a session, add or update an entry here for anything you committed
 
 | Area | Status | Notes |
 |---|---|---|
-| Bridge version | ✅ Current | Synced from NorthCoveBuilders-Mockup main on starter refresh. If the editor adds a new feature after that date, copy the bridge again from a current reference. |
+| Bridge version | ✅ Canonical | This repo IS the source of truth (v1.0.0). Client sites run `npm run sync-ngf` to pull from here. Never sync in the other direction — an audit found 7 of 9 live sites on a drifted bridge, caused by the old copy-from-a-reference-site instruction. |
 | `template_id` references | ✅ Removed | This field is deprecated in the NGF database (schema is now scraped from the live site). The starter no longer mentions it. If you see `template_id` in any other doc, that doc is stale. |
 | Legacy `site/` subdirectory | ⚠️ Drifting risk | Same files exist at the repo root and under `site/`. Active edits should go at the root. Vercel deploy can target either; pick one and stick with it. |
 
