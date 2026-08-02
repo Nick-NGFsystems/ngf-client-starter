@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "doctor": "node scripts/ngf-doctor.mjs",
-    "doctor:strict": "node scripts/ngf-doctor.mjs --strict"
+    "doctor:strict": "node scripts/ngf-doctor.mjs --strict",
+    "sync-ngf": "node scripts/sync-ngf.mjs",
+    "sync-ngf:check": "node scripts/sync-ngf.mjs --check"
   },
   "dependencies": {
     "next": "15.3.8",

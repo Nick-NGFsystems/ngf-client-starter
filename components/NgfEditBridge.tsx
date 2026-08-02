@@ -2,6 +2,19 @@
 import { useEffect } from 'react'
 
 /**
+ * Canonical version of this file. Bump when the postMessage contract changes.
+ *
+ * This exists so drift is detectable. The bridge is copied per-site rather than
+ * installed, and an audit found 7 of 9 live sites running a stale copy (9.9 KB
+ * to 38.6 KB against the canonical ~43 KB) with no way to tell from the outside.
+ * `npm run doctor` reads this constant; `npm run sync-ngf` refreshes the file.
+ *
+ * DO NOT hand-edit this file in a client site. Run `npm run sync-ngf` instead —
+ * local edits are overwritten and the version then lies about what the code does.
+ */
+export const NGF_BRIDGE_VERSION = '1.0.0'
+
+/**
  * NgfEditBridge — enables the NGF portal's live preview and click-to-edit.
  * Must be included in app/layout.tsx. Do not remove.
  */

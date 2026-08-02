@@ -168,22 +168,47 @@ if (!has('components/NgfEditBridge.tsx')) {
   const BRIDGE_MIN_BYTES = 20000 // canonical is ~43 KB; the smallest real one shipped is ~24 KB
   const required = ['ngfReady', 'setEditMode', 'contentUpdate', 'fieldClick', 'ngfDefault']
   const missingHandlers = required.filter((h) => !bridge.includes(h))
+  const versionMatch = bridge.match(/NGF_BRIDGE_VERSION\s*=\s*['"]([^'"]+)['"]/)
+
   if (missingHandlers.length) {
     fail(
       'NgfEditBridge is the real bridge',
       `Missing protocol handler(s): ${missingHandlers.join(', ')}. This looks like a stub or a ` +
-        `hand-written reimplementation. Copy the canonical file from ngf-client-starter — a partial ` +
-        `bridge fails SILENTLY (sidebar populates, clicking does nothing), which is worse than none.`,
+        `hand-written reimplementation. Run 'npm run sync-ngf' — a partial bridge fails SILENTLY ` +
+        `(sidebar populates, clicking does nothing), which is worse than none.`,
     )
   } else if (bridge.length < BRIDGE_MIN_BYTES) {
     fail(
       'NgfEditBridge is the real bridge',
       `Only ${bridge.length} bytes — the canonical bridge is ~43 KB. This is a truncated or partial copy. ` +
-        `Re-copy components/NgfEditBridge.tsx from ngf-client-starter.`,
+        `Run 'npm run sync-ngf'.`,
+    )
+  } else if (!versionMatch) {
+    // Every synced bridge exports NGF_BRIDGE_VERSION. Its absence means this copy
+    // predates versioning, i.e. it was copied before drift was detectable at all.
+    warn(
+      'NgfEditBridge is the real bridge',
+      `${(bridge.length / 1024).toFixed(0)} KB and structurally complete, but it exports no ` +
+        `NGF_BRIDGE_VERSION — so it predates version tracking and cannot be checked for drift. ` +
+        `Run 'npm run sync-ngf' to pull the current canonical copy.`,
     )
   } else {
-    ok('NgfEditBridge is the real bridge', `${(bridge.length / 1024).toFixed(0)} KB, all protocol handlers present.`)
+    ok('NgfEditBridge is the real bridge', `v${versionMatch[1]}, ${(bridge.length / 1024).toFixed(0)} KB, all protocol handlers present.`)
   }
+}
+
+// ── 3c. Canonical files are syncable, not hand-maintained ────────────────────
+// The bridge and friends are copied per-site rather than installed, which is how
+// 7 of 9 live sites ended up on a drifted bridge. sync-ngf.mjs makes the copy
+// reproducible and 'npm run sync-ngf:check' makes drift detectable in CI.
+if (!has('scripts/sync-ngf.mjs')) {
+  warn(
+    'Canonical files are syncable',
+    "No scripts/sync-ngf.mjs — this site's bridge/LeadForm/doctor can only be updated by hand-copying, " +
+      "which is how sites drift. Copy it from ngf-client-starter and add \"sync-ngf\": \"node scripts/sync-ngf.mjs\".",
+  )
+} else {
+  ok('Canonical files are syncable', "Run 'npm run sync-ngf:check' to verify against canonical.")
 }
 
 // ── 3b. Portal binding marker (the site must be BINDABLE) ────────────────────
