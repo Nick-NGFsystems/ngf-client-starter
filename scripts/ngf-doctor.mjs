@@ -124,9 +124,14 @@ if (!revPath) {
   const looksLikeLead = (src) =>
     /export\s+async\s+function\s+POST/.test(src) &&
     (MAILERS.test(src) || (/\bemail\b/i.test(src) && /\b(name|phone)\b/i.test(src)))
+  // A route "reaches the portal" if it relays to the central lead store, OR if
+  // it posts to /api/leads/ingest — the prospect-signup path used by NGF's own
+  // marketing site, where an enquiry is a lead for the AGENCY rather than a
+  // customer of a client. Both persist; only email-only routes lose the lead.
+  const REACHES = /relayLeadToNgf|api\/leads\/ingest/
   const mailing = API_ROUTES.filter((f) => looksLikeLead(f.src) && !/revalidate|\bngf-lead\b/.test(f.path))
-  const relayed = mailing.filter((f) => /relayLeadToNgf/.test(f.src))
-  const orphaned = mailing.filter((f) => !/relayLeadToNgf/.test(f.src))
+  const relayed = mailing.filter((f) => REACHES.test(f.src))
+  const orphaned = mailing.filter((f) => !REACHES.test(f.src))
   const usesLeadForm = FILES.some((f) => /<LeadForm[\s/>]/.test(f.src))
 
   if (orphaned.length) {
