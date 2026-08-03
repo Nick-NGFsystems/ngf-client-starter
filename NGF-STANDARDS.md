@@ -1,8 +1,16 @@
 # NGFsystems — Universal Project Standards
 
-<!-- ngf-standards-version: 2.3.0 -->
-**Version 2.3.0 · last updated 2026-08-02.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
+<!-- ngf-standards-version: 2.4.0 -->
+**Version 2.4.0 · last updated 2026-08-03.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
 
+> **2.4.0** adds the rule that has now bitten three sessions: **verify the remote before editing any
+> existing client repo.** One live client folder had no `.git` at all while a public repo of the same
+> name existed and was ahead of it — every edit went into a disconnected copy while the live site kept
+> serving old code. The doctor now fails a missing `.git` or missing remote. Also fixed: the feature
+> playbook's contact-form recipe told you to build the bespoke Resend-only route that the lead-capture
+> standard forbids, and the honeypot naming rule is now enforced (a honeypot named `company` gets
+> autofilled by real users, silently discarding their enquiry).
+>
 > **2.3.0** makes the document self-sufficient. The files it could only *describe* — the 43 KB editor
 > bridge, `LeadForm`, `CookieConsent`, the doctor — are now fetched by **`npm run sync-ngf`**, so the doc
 > contains a command instead of an instruction to go find them. The bridge exports `NGF_BRIDGE_VERSION`
@@ -139,6 +147,34 @@ business facts. Business name, NAP (name/address/phone), hours, staff, services,
 photography, GA4 measurement ID and the real domain must all come from the client. **Never invent them** —
 fabricated NAP data ends up in JSON-LD and is published to Google as fact. Without a brief, use obvious
 placeholders and list what is missing.
+
+## Before you edit ANY existing client repo
+
+**A folder on disk is not the source of truth. Verify the remote first — every time.**
+
+```bash
+git remote -v          # no output, or "not a git repository"? STOP and read below.
+git fetch origin && git status -sb
+```
+
+This has bitten three separate sessions. Two failure modes, both silent:
+
+- **Stale clone.** Local `main` is many commits behind `origin/main` (one was **55 behind**). You then
+  "fix" things fixed months ago, and re-add files that were deliberately deleted.
+- **Detached snapshot.** The folder has **no `.git` at all**, while a live public repo of the same name
+  exists and is *ahead* of it. Every edit goes into a disconnected copy; the live site keeps serving the
+  old code, and nothing you do reaches production.
+
+Rules:
+
+1. **No `.git`? Check GitHub for a repo of the same name before touching anything.** If one exists, this
+   folder is a detached snapshot. Clone the real repo and work there.
+2. **Never `git init` an existing client folder.** It forks or clobbers a live repo. `npm run doctor`
+   fails on a missing `.git` or a missing remote for exactly this reason.
+3. **Never `git reset --hard`** in these folders — they routinely hold uncommitted work.
+4. **Diff before assuming either side wins.** A detached folder may hold real work that was never pushed,
+   *and* be missing work that was. Compare, don't guess.
+5. Always `git pull` before the first edit, and report the divergence count.
 
 ## How to use this file
 
@@ -2219,7 +2255,17 @@ If the ask fits no pattern, stop and design it against the four principles (edit
 
 **Repeatable list / gallery.** `data-ngf-group="section.items"` on the container — exactly two path segments, declared once (not on both responsive layouts). Declare `data-ngf-item-fields`, render with indexed paths, read with `getItems(content, 'section.items')`. Wrap image sets in `<PhotoProvider>`. See "Repeatable groups" and "Large galleries."
 
-**Contact / inquiry form.** Client component for the form; a server route (or server action) that (1) validates with Zod, (2) sends via Resend, (3) returns a generic error on failure (no internals leaked). The Resend key is server-only. Add a honeypot or basic rate-limit if spam is a risk. Labels/headings can be `data-ngf-*` editable; native `<select>` *options* are not bridge-editable (see Known Issues).
+**Contact / inquiry form.** Use **`<LeadForm>`** from the starter, pointed at the central lead store. A new site has **no form API route and no Resend key of its own** — the store persists first, then sends the notification from the verified NGF sender, so a failed email can no longer lose the enquiry, and every submission shows up in the client's **Form Submissions** portal page.
+
+```tsx
+<LeadForm base={base} domain={domain} formType="contact" fields={[…]} />
+```
+
+Only when **retrofitting a site that already has a working form**, keep its route and call `relayLeadToNgf()` *before* the existing send — additive, never throws, existing email and UX unchanged.
+
+> **A bespoke Resend-only route or server action is non-conformant.** The route form fails `npm run doctor`; the **server-action** form is worse — the doctor only scans `app/api/**/route.ts`, so it passes while losing every enquiry. See "Lead capture: persist first, email second".
+
+The honeypot is mandatory and must be **non-semantic** — `_gotcha`, never `company`/`website`/`address2`. Browsers autofill by field name, so a semantic honeypot gets filled by real users and their enquiry is silently discarded. Labels/headings can be `data-ngf-*` editable; native `<select>` *options* are not bridge-editable (see Known Issues).
 
 **Features that need their own data (service requests, quotes).** *(Booking is NOT one of these — use the native module above.)* Give the client site its **own** Neon DB via Drizzle, tables scoped by `client_id`. For customer-facing flows where the customer has no account, use **tokenized public links** (random token + TTL, validated server-side) and whitelist those routes in middleware. Schema changes live in the **client site repo**, not the main app; record any migration you can't verify live in that repo's Known Gaps.
 

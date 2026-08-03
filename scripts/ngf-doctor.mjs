@@ -197,6 +197,36 @@ if (!has('components/NgfEditBridge.tsx')) {
   }
 }
 
+// ── 2c. Honeypot naming ──────────────────────────────────────────────────────
+// A honeypot must be NON-SEMANTIC. Browsers and password managers autofill by
+// field name, so a hidden input called "company" / "website" / "address2" gets
+// populated for real users — and the form then discards their enquiry as spam.
+// Silent, and it looks like the form simply doesn't work.
+{
+  const SEMANTIC = ['company', 'website', 'url', 'address2', 'phone2', 'fax', 'organization', 'business']
+  const offenders = []
+  for (const f of FILES) {
+    if (!/\.(tsx?|jsx?)$/.test(f.path)) continue
+    // Only consider inputs that look deliberately hidden (i.e. a honeypot).
+    if (!/honeypot|sr-only|display:\s*none|hidden|left-\[-9999px\]|opacity-0/i.test(f.src)) continue
+    for (const name of SEMANTIC) {
+      const re = new RegExp(`name=["'\`]${name}["'\`]`, 'i')
+      if (re.test(f.src)) offenders.push(`${f.path} (name="${name}")`)
+    }
+  }
+  if (offenders.length) {
+    warn(
+      'Honeypot is non-semantic',
+      `Possible honeypot using an autofill-able name: ${offenders.join(', ')}. Browsers and password ` +
+        `managers fill by field name, so real users populate it and their enquiry is silently discarded ` +
+        `as spam. Rename to a non-semantic value — the standard is "_gotcha". (If this is a REAL visible ` +
+        `field rather than a honeypot, ignore this.)`,
+    )
+  } else {
+    ok('Honeypot is non-semantic')
+  }
+}
+
 // ── 3bb. No local copy of the standards doc ──────────────────────────────────
 // The canonical doc lives in ngf-client-starter and is fetched over a raw URL.
 // A fork inherits the file, and from that moment it is a stale snapshot that a
@@ -335,6 +365,36 @@ if (!vercelJson) {
   warn('vercel.json ignoreCommand', 'No ignoreCommand — docs-only commits still trigger builds.')
 } else {
   ok('vercel.json ignoreCommand')
+}
+
+// ── 6a2. The repo must be connected to a remote ──────────────────────────────
+// A folder under GitHub/ is not necessarily a clone. One live client site was a
+// DETACHED snapshot: no .git at all, while a public repo of the same name existed
+// and was ahead of it. Edits there go nowhere — the live site keeps serving the
+// old code — and `git init` + push would fork or clobber the real repo. Catch it
+// before any work is done rather than after.
+{
+  if (!has('.git')) {
+    fail(
+      'Repo is connected to a remote',
+      'No .git directory — this folder is NOT a clone. Check GitHub for a repo of the same name before ' +
+        'editing anything: if one exists, this is a detached snapshot and your changes will never reach ' +
+        'the live site. Clone the real repo and work there. Do NOT `git init` this folder — that forks ' +
+        'or clobbers the remote.',
+    )
+  } else {
+    const gitCfg = read('.git/config') ?? ''
+    // Assigned to a variable deliberately: a line starting with `/` after an
+    // expression is parsed as division, not a regex literal (ASI trap).
+    const hasRemote = /\[remote /.test(gitCfg)
+    hasRemote
+      ? ok('Repo is connected to a remote')
+      : fail(
+          'Repo is connected to a remote',
+          'This is a git repo with NO remote configured. Nothing you commit here reaches the live site. ' +
+            'Add the correct origin — do not create a new repo if one already exists on GitHub.',
+        )
+  }
 }
 
 // ── 6b. The doctor itself must live in this repo ─────────────────────────────
