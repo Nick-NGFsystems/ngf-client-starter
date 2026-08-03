@@ -197,6 +197,67 @@ if (!has('components/NgfEditBridge.tsx')) {
   }
 }
 
+// ── 2b2. Cookie consent wiring ───────────────────────────────────────────────
+// GA4 sets cookies, so it must be gated behind hasCookieConsent(). But the banner
+// only renders when NEXT_PUBLIC_COOKIE_ANALYTICS === '1' — so a site that gates
+// analytics WITHOUT setting that var can never obtain consent, and analytics
+// silently never load. The two settings are a pair; neither works alone.
+{
+  const envExample = read('.env.local.example') ?? ''
+  // The canonical CookieConsent component itself contains every string below —
+  // hasCookieConsent, resetCookieConsent, NEXT_PUBLIC_COOKIE_ANALYTICS — in its
+  // definitions and its own doc comments. Scanning it would make every check
+  // self-satisfying and pass a site that wires up none of it. Exclude it and look
+  // only at how the REST of the site uses the API.
+  const CONSENT_SRC = /components[\\/]CookieConsent\.tsx?$/
+  const consumers = FILES.filter((f) => !CONSENT_SRC.test(f.path))
+
+  const usesGa = consumers.some((f) => /NEXT_PUBLIC_GA_ID|googletagmanager/.test(f.src))
+  const gatesConsent = consumers.some((f) => /hasCookieConsent/.test(f.src))
+  const hasBanner = has('components/CookieConsent.tsx')
+  const declaresVar = /NEXT_PUBLIC_COOKIE_ANALYTICS/.test(envExample) ||
+    consumers.some((f) => /NEXT_PUBLIC_COOKIE_ANALYTICS/.test(f.src))
+
+  if (!usesGa) {
+    ok('Cookie consent wiring', 'No cookie-based analytics on this site.')
+  } else if (!hasBanner) {
+    fail(
+      'Cookie consent wiring',
+      'This site loads GA4 but has no components/CookieConsent.tsx. Cookie-based analytics must not ' +
+        "run before consent. Run 'npm run sync-ngf'.",
+    )
+  } else if (!gatesConsent) {
+    fail(
+      'Cookie consent wiring',
+      'GA4 is present but nothing calls hasCookieConsent() — analytics load before the visitor agrees. ' +
+        "Gate the analytics component: `if (!id || !hasCookieConsent()) return null`.",
+    )
+  } else if (!declaresVar) {
+    fail(
+      'Cookie consent wiring',
+      'GA4 is correctly gated behind hasCookieConsent(), but NEXT_PUBLIC_COOKIE_ANALYTICS is declared ' +
+        'nowhere. The banner only renders when it is "1", so consent can never be granted and analytics ' +
+        'will NEVER load — silently. Add it to .env.local.example and set it to 1 in Vercel.',
+    )
+  } else {
+    ok('Cookie consent wiring', 'GA4 gated behind consent, banner env var declared.')
+  }
+
+  // Consent must be as easy to withdraw as to give. The banner only shows when no
+  // choice is stored, so without a reset control the first click is permanent.
+  if (hasBanner && usesGa) {
+    const canWithdraw = consumers.some((f) => /resetCookieConsent/.test(f.src))
+    canWithdraw
+      ? ok('Consent can be withdrawn')
+      : warn(
+          'Consent can be withdrawn',
+          'Nothing calls resetCookieConsent(). Once a visitor accepts or declines, the banner never ' +
+            'returns and they can never change their mind. Add a "Cookie settings" control in the footer ' +
+            'or privacy page.',
+        )
+  }
+}
+
 // ── 2c. Honeypot naming ──────────────────────────────────────────────────────
 // A honeypot must be NON-SEMANTIC. Browsers and password managers autofill by
 // field name, so a hidden input called "company" / "website" / "address2" gets

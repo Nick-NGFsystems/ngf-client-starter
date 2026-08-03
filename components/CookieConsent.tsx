@@ -28,6 +28,27 @@ export function hasCookieConsent(): boolean {
 }
 
 /**
+ * Clear the stored choice so the banner shows again on the next render.
+ *
+ * REQUIRED for compliance, not a nicety: consent must be as easy to WITHDRAW as
+ * it was to give. Without this the banner only ever appears once — accept or
+ * decline, and the visitor can never change their mind or revoke analytics.
+ *
+ * Wire it to a "Cookie settings" control that is reachable from every page —
+ * the footer, and/or the privacy policy. Reloading applies the change
+ * immediately, since gated scripts evaluate hasCookieConsent() at render time:
+ *
+ *   'use client'
+ *   import { resetCookieConsent } from '@/components/CookieConsent'
+ *   <button type="button" onClick={resetCookieConsent}>Cookie settings</button>
+ */
+export function resetCookieConsent(): void {
+  if (typeof window === 'undefined') return
+  window.localStorage.removeItem(CONSENT_KEY)
+  window.location.reload()
+}
+
+/**
  * Cookie consent banner. Mount once in app/layout.tsx. It only appears when the
  * site actually loads cookie-based analytics — set `NEXT_PUBLIC_COOKIE_ANALYTICS=1`
  * in that case. Leave it unset for cookieless / no-analytics sites and the banner

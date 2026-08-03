@@ -1,8 +1,14 @@
 # NGFsystems — Universal Project Standards
 
-<!-- ngf-standards-version: 2.4.0 -->
-**Version 2.4.0 · last updated 2026-08-03.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
+<!-- ngf-standards-version: 2.5.0 -->
+**Version 2.5.0 · last updated 2026-08-03.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
 
+> **2.5.0** closes the cookie-consent gaps. `NEXT_PUBLIC_COOKIE_ANALYTICS` was documented only in prose,
+> so a site could gate GA4 behind consent correctly and still have the banner never render — consent never
+> granted, analytics silently never loading. It is now in `.env.local.example`, stated as an invariant, and
+> enforced by the doctor. Added `resetCookieConsent()` so a visitor can change their mind: previously the
+> banner appeared once and the first click was permanent, which is not a lawful consent flow.
+>
 > **2.4.0** adds the rule that has now bitten three sessions: **verify the remote before editing any
 > existing client repo.** One live client folder had no `.git` at all while a public repo of the same
 > name existed and was ahead of it — every edit went into a disconnected copy while the live site kept
@@ -1438,7 +1444,18 @@ Mount in `app/layout.tsx`, together with the banner:
 |---|---|
 | `hasCookieConsent(): boolean` | `true` only when consent was explicitly accepted. Returns `false` during SSR (`typeof window === 'undefined'`), so gated scripts never render server-side. |
 | localStorage key | `ngf-cookie-consent`, value `'accepted'` \| `'declined'` |
-| Banner visibility | Only renders when `NEXT_PUBLIC_COOKIE_ANALYTICS=1` **and** no choice is stored. Set that env var on any site loading cookie-based analytics; leave it unset otherwise and the banner stays hidden. |
+| Banner visibility | Only renders when `NEXT_PUBLIC_COOKIE_ANALYTICS=1` **and** no choice is stored. |
+| `resetCookieConsent(): void` | Clears the stored choice and reloads, so the banner returns. **Required** — consent must be as easy to withdraw as to give. Wire it to a "Cookie settings" control reachable from every page (footer and/or privacy policy). |
+
+> **The invariant: `NEXT_PUBLIC_GA_ID` set ⇒ `NEXT_PUBLIC_COOKIE_ANALYTICS=1` set.**
+> These two are a pair and neither works alone. Gate GA4 behind `hasCookieConsent()` but forget the env
+> var, and the banner never renders → consent can never be granted → `hasCookieConsent()` is false forever
+> → **analytics silently never load**, on a site that looks correctly configured. Set both, or neither.
+> `npm run doctor` now fails this, fails ungated analytics, and warns when nothing calls
+> `resetCookieConsent()`.
+>
+> **Cookieless analytics (Vercel Analytics) needs no consent** — don't gate it, and don't turn the banner
+> on for it. A banner with nothing to consent to is worse than no banner.
 | On Accept | Writes the key, then `window.location.reload()` so gated scripts re-evaluate. There is no change event — the reload is the propagation mechanism. |
 
 **Cookieless analytics (Vercel Analytics) needs no consent** — don't gate it, and don't turn the banner
