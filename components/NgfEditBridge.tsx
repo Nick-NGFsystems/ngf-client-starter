@@ -384,18 +384,39 @@ export default function NgfEditBridge() {
     // when edit mode is on. Reposition on scroll/resize via rAF throttling.
     const editButtons = new Map<HTMLElement, HTMLButtonElement>()
 
+    /**
+     * True when the element is scrolled far enough out of view that an overlay
+     * button for it should not be shown at all.
+     *
+     * These buttons are `position: fixed` and positioned from
+     * getBoundingClientRect(), so they must be hidden rather than clamped into
+     * view. Clamping with Math.max(8, …) pins the button to the top of the
+     * viewport once the image scrolls above it — the button detaches from its
+     * image and, with several images, they stack up at the top of the screen.
+     */
+    function isOffscreenForOverlay(rect: DOMRect, btnHeight: number): boolean {
+      return rect.bottom < btnHeight + 16 || rect.top > window.innerHeight - 8
+    }
+
     function positionEditButton(btn: HTMLButtonElement, img: HTMLElement) {
       const rect = img.getBoundingClientRect()
-      // Don't overlay buttons on tiny images (logos / icons) or off-screen ones.
+      // Don't overlay buttons on tiny images (logos / icons).
       if (rect.width < 40 || rect.height < 40) {
         btn.style.display = 'none'
         return
       }
+      const btnHeight = btn.offsetHeight || 34
+      if (isOffscreenForOverlay(rect, btnHeight)) {
+        btn.style.display = 'none'
+        return
+      }
       btn.style.display = ''
-      // Wait for layout, then position 8px from top-right of the image. Clamp
-      // to viewport so the button is always reachable.
+      // 8px inset from the image's top-right. Clamp to the viewport so it stays
+      // reachable, but never past the image's own bottom edge — otherwise the
+      // button floats away from the image it belongs to.
       const btnWidth = btn.offsetWidth || 140
-      const top  = Math.max(8, Math.min(rect.top + 8, window.innerHeight - 50))
+      const maxTop = Math.min(window.innerHeight - btnHeight - 8, rect.bottom - btnHeight - 8)
+      const top  = Math.max(8, Math.min(rect.top + 8, maxTop))
       const left = Math.max(8, Math.min(rect.right - btnWidth - 8, window.innerWidth - btnWidth - 8))
       btn.style.top  = `${top}px`
       btn.style.left = `${left}px`
@@ -477,9 +498,17 @@ export default function NgfEditBridge() {
         btn.style.display = 'none'
         return
       }
+      const btnHeight = btn.offsetHeight || 30
+      // Same fix as the Replace-photo button: hide when scrolled out of view
+      // rather than clamping, or it pins to the top of the viewport.
+      if (isOffscreenForOverlay(rect, btnHeight)) {
+        btn.style.display = 'none'
+        return
+      }
       btn.style.display = ''
       // Top-left of image, with 8px inset. Replace photo sits top-right.
-      const top  = Math.max(8, Math.min(rect.top + 8, window.innerHeight - 40))
+      const maxTop = Math.min(window.innerHeight - btnHeight - 8, rect.bottom - btnHeight - 8)
+      const top  = Math.max(8, Math.min(rect.top + 8, maxTop))
       const left = Math.max(8, rect.left + 8)
       btn.style.top  = `${top}px`
       btn.style.left = `${left}px`
