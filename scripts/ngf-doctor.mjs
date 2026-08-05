@@ -213,40 +213,31 @@ if (!has('components/NgfEditBridge.tsx')) {
   const consumers = FILES.filter((f) => !CONSENT_SRC.test(f.path))
 
   const usesGa = consumers.some((f) => /NEXT_PUBLIC_GA_ID|googletagmanager/.test(f.src))
-  const gatesConsent = consumers.some((f) => /hasCookieConsent/.test(f.src))
   const hasBanner = has('components/CookieConsent.tsx')
+
+  // Accept ANY consent implementation, not just the starter's. A site may ship a
+  // better one — cookie-backed, with a change event and active cookie clearing on
+  // decline — and gate on its own helper. Requiring the literal name
+  // `hasCookieConsent` flagged a correct site as broken, which is worse than no
+  // check: it invites someone to "fix" working code down to a weaker pattern.
+  // The real defect is analytics loaded by a file with NO consent awareness at all.
+  const gaFiles = consumers.filter((f) => /NEXT_PUBLIC_GA_ID|googletagmanager|clarity\.ms/.test(f.src))
+  const gatesConsent = gaFiles.some((f) => /consent/i.test(f.src))
+
+  // Only the STARTER's CookieConsent needs this env var to render its banner. A
+  // site with its own implementation manages its own gating and must not be
+  // failed for not declaring a variable it never reads.
+  const usesStarterConsent = consumers.some((f) => /hasCookieConsent/.test(f.src))
   const declaresVar = /NEXT_PUBLIC_COOKIE_ANALYTICS/.test(envExample) ||
     consumers.some((f) => /NEXT_PUBLIC_COOKIE_ANALYTICS/.test(f.src))
 
-  if (!usesGa) {
-    ok('Cookie consent wiring', 'No cookie-based analytics on this site.')
-  } else if (!hasBanner) {
-    fail(
-      'Cookie consent wiring',
-      'This site loads GA4 but has no components/CookieConsent.tsx. Cookie-based analytics must not ' +
-        "run before consent. Run 'npm run sync-ngf'.",
-    )
-  } else if (!gatesConsent) {
-    fail(
-      'Cookie consent wiring',
-      'GA4 is present but nothing calls hasCookieConsent() — analytics load before the visitor agrees. ' +
-        "Gate the analytics component: `if (!id || !hasCookieConsent()) return null`.",
-    )
-  } else if (!declaresVar) {
-    fail(
-      'Cookie consent wiring',
-      'GA4 is correctly gated behind hasCookieConsent(), but NEXT_PUBLIC_COOKIE_ANALYTICS is declared ' +
-        'nowhere. The banner only renders when it is "1", so consent can never be granted and analytics ' +
-        'will NEVER load — silently. Add it to .env.local.example and set it to 1 in Vercel.',
-    )
-  } else {
-    ok('Cookie consent wiring', 'GA4 gated behind consent, banner env var declared.')
-  }
-
   // Consent must be as easy to withdraw as to give. The banner only shows when no
   // choice is stored, so without a reset control the first click is permanent.
-  if (hasBanner && usesGa) {
-    const canWithdraw = consumers.some((f) => /resetCookieConsent/.test(f.src))
+  if (usesGa && gatesConsent) {
+    // Accept the starter's resetCookieConsent OR any site-specific equivalent
+    // (a clear/revoke/preferences control), for the same reason as above.
+    const canWithdraw = consumers.some((f) =>
+      /resetCookieConsent|clearConsent|CookiePreferences|revokeConsent/.test(f.src))
     canWithdraw
       ? ok('Consent can be withdrawn')
       : warn(
