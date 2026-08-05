@@ -12,7 +12,7 @@ import { useEffect } from 'react'
  * DO NOT hand-edit this file in a client site. Run `npm run sync-ngf` instead —
  * local edits are overwritten and the version then lies about what the code does.
  */
-export const NGF_BRIDGE_VERSION = '1.0.0'
+export const NGF_BRIDGE_VERSION = '1.1.0'
 
 /**
  * NgfEditBridge — enables the NGF portal's live preview and click-to-edit.
