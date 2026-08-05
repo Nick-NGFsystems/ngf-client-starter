@@ -1,8 +1,12 @@
 # NGFsystems — Universal Project Standards
 
-<!-- ngf-standards-version: 2.7.0 -->
-**Version 2.7.0 · last updated 2026-08-05.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
+<!-- ngf-standards-version: 2.8.0 -->
+**Version 2.8.0 · last updated 2026-08-05.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
 
+> **2.8.0** — **the scraper now reads every page in your `sitemap.xml`, not just the home page.** Sub-page
+> annotations used to be permanently invisible to the editor, which cost two clients (per-service galleries
+> and an entire product catalogue). Your sitemap is now load-bearing: a page missing from it stays invisible.
+>
 > **2.7.0** writes down the rule that made two clients' photos uneditable: **anything not in the
 > server-rendered HTML cannot be edited.** Modals, tab panels and `{items.length > 0 && …}` guards all
 > produce content the scraper never sees — silently, with no sidebar entry and no error. Adds the
@@ -303,12 +307,22 @@ Upstream now ships security releases roughly monthly. Unpatched-by-default is no
 
 The site renders content with hardcoded fallbacks. At SSR time, every page calls `getNgfContent()` which fetches the client's published content from the NGF portal's public API as a flat dot-notation map. Each editable element renders `content['key'] || hardcoded_fallback` so missing keys gracefully fall through. Every editable element is annotated with `data-ngf-*` attributes so the portal editor can scrape the live HTML, build its sidebar schema dynamically, and route click-to-edit through a small bridge component (`NgfEditBridge`) that sits in `app/layout.tsx`. **There is no schema file to maintain.** The site itself is the schema.
 
-> **The scraper reads the homepage and nothing else.** It performs a single `fetch()` of the site root
-> and parses that one document. It does not crawl. **Anything annotated only on a sub-page is invisible
-> to the editor** — the client will never see that field, and the failure is silent (no error, the
-> section simply doesn't appear). So: put every editable section on `/`, and have sub-pages re-render
-> the same components against the same canonical field paths. A `/services` page that is the *only*
-> place `services.items` is annotated produces an empty editor.
+> **The scraper reads every page in your `sitemap.xml`.** It fetches the home page plus each same-origin
+> URL the sitemap declares (up to 12, within a 20s budget), and merges the schemas. **So your `sitemap.xml`
+> is load-bearing** — a page missing from it is invisible to the editor, and the failure is silent: the
+> section simply never appears in the sidebar. Every route with editable content must be listed.
+>
+> **No sitemap ⇒ home page only.** The scraper falls back rather than guessing, so a site without one
+> silently loses every sub-page field. `npm run doctor` requires `app/sitemap.ts` for exactly this reason.
+>
+> Merge rules, when the same field appears on more than one page:
+> - **The home page wins.** It defines section order, and a sub-page cannot change the type or label of a
+>   field the home page already declares. Keep one canonical definition per field path.
+> - **For repeatable groups, the page rendering the MOST items wins** — so featured products on `/` and the
+>   full grid on `/products` gives the client every row, not whichever page was scraped first.
+>
+> *(Before 2026-08-05 this was a single fetch of the site root and sub-page annotations were unreachable.
+> If you see advice to "put every editable section on `/`", it predates this change.)*
 
 ### Required files for any new NGF client site
 
