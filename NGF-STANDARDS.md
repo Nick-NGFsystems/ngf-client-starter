@@ -1,8 +1,14 @@
 # NGFsystems — Universal Project Standards
 
-<!-- ngf-standards-version: 2.6.0 -->
-**Version 2.6.0 · last updated 2026-08-05.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
+<!-- ngf-standards-version: 2.7.0 -->
+**Version 2.7.0 · last updated 2026-08-05.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
 
+> **2.7.0** writes down the rule that made two clients' photos uneditable: **anything not in the
+> server-rendered HTML cannot be edited.** Modals, tab panels and `{items.length > 0 && …}` guards all
+> produce content the scraper never sees — silently, with no sidebar entry and no error. Adds the
+> editor-only container pattern as the sanctioned fix, plus a note that shared constants must not live
+> in a `'use client'` module.
+>
 > **2.6.0** adds the **`gallery` field type** — an ordered list of images in one field. Per-item image
 > lists were structurally impossible (group paths are exactly two segments), so sites hardcoded their
 > extra photos and clients could never edit them; two hit this independently. Includes multi-file upload,
@@ -778,6 +784,54 @@ to the scraper and the client can never switch it back on. Test `content['about.
 inverted from the intuitive check, because `''` (shown) is stripped before persisting, so only `'false'`
 is ever stored. *(This doc previously said the editor had no toggle control and told you not to use the
 type. That was wrong — a real switch control ships at `app/portal/website/page.tsx:1147`.)*
+
+### Anything not in the server-rendered HTML cannot be edited
+
+The portal scrapes your site's HTML **once, server-side**. If an element is not in that response, it
+does not exist as far as the editor is concerned — no sidebar entry, no click-to-edit, no error. This
+is the single most common way a site ends up with content the client cannot touch.
+
+**Never annotate inside:**
+
+- a **modal / dialog / lightbox** rendered as `{open && <Modal/>}` — it is not in the HTML until clicked
+- a tab panel, accordion, or drawer that mounts on interaction
+- anything behind `{items.length > 0 && …}` — before the client publishes, `getItems` returns `[]`, so
+  the container is absent and they can never add the first item
+- a component that only renders client-side after `useEffect`
+
+A modal is also unreachable a second way: the bridge intercepts clicks in capture phase and only passes
+through `<a>`, `<button>` and `aria-expanded` toggles. A modal opened from a `<div>` click never opens
+in edit mode at all.
+
+#### The editor-only container pattern
+
+When content genuinely belongs in a modal, put an **annotated container in the always-rendered parent**
+and hide it from visitors with CSS that only lifts inside the editor:
+
+```tsx
+<div className="ngf-editor-only" data-ngf-field={`products.items.${i}.gallery`}
+     data-ngf-label="Extra Photos" data-ngf-type="gallery" data-ngf-section="Products">
+  {photos.map((src, n) => <div key={n}><img src={src} alt="" /></div>)}
+</div>
+```
+
+```css
+.ngf-editor-only { display: none; }
+html[data-ngf-edit='true'] .ngf-editor-only { display: grid; }
+```
+
+The bridge sets `data-ngf-edit="true"` on `<html>` in edit mode. The element is in every server
+response so the scraper finds it, invisible to real visitors, and visible plus clickable in the editor.
+
+**Do not** make it conditional or delete it "because it's invisible" — absent from the HTML means
+uneditable. And feed the same resolved values to the modal, so what the client publishes is what
+customers see.
+
+### Shared constants must not live in a `'use client'` module
+
+A server component importing a plain value from a `'use client'` file receives a **client reference**,
+not the value — so `MY_KEYS.map(...)` throws *"map is not a function"* at prerender, not at typecheck.
+Put constants shared across the boundary in their own neutral module (`lib/…`) and import from there.
 
 ### `gallery` — an ordered list of images in ONE field
 
