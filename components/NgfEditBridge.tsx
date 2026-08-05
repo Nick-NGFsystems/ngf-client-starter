@@ -12,7 +12,7 @@ import { useEffect } from 'react'
  * DO NOT hand-edit this file in a client site. Run `npm run sync-ngf` instead —
  * local edits are overwritten and the version then lies about what the code does.
  */
-export const NGF_BRIDGE_VERSION = '1.1.0'
+export const NGF_BRIDGE_VERSION = '1.2.0'
 
 /**
  * NgfEditBridge — enables the NGF portal's live preview and click-to-edit.
@@ -353,6 +353,64 @@ export default function NgfEditBridge() {
     }
     function isToggleField(el: HTMLElement) {
       return el.getAttribute('data-ngf-type') === 'toggle'
+    }
+
+    function isGalleryField(el: HTMLElement) {
+      return el.getAttribute('data-ngf-type') === 'gallery'
+    }
+
+    /**
+     * Live-preview a gallery: the value is a JSON array of image URLs held in one
+     * scalar field, and the annotated element is the CONTAINER, not an <img>.
+     *
+     * Mirrors addGroupItem's clone-the-last-child approach — grow by cloning the
+     * final child, shrink by removing extras, then rewrite every <img> src. The
+     * site owns the markup of one tile; we only ever repeat it, so a site can
+     * style tiles however it likes and this still works.
+     *
+     * An empty value means "restore the server-rendered default", exactly as it
+     * does for text and images — so a cleared gallery repaints the original
+     * photos rather than emptying the section.
+     */
+    function applyGalleryState(container: HTMLElement, raw: string) {
+      if (container.dataset.ngfGalleryDefault === undefined) {
+        container.dataset.ngfGalleryDefault = container.innerHTML
+      }
+      if (raw === '') {
+        container.innerHTML = container.dataset.ngfGalleryDefault
+        return
+      }
+
+      let urls: string[] = []
+      try {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed)) {
+          urls = parsed
+            .map(e => (typeof e === 'string' ? e : e && typeof e === 'object' ? (e as { src?: string }).src : null))
+            .filter((u): u is string => typeof u === 'string' && u.trim() !== '')
+        }
+      } catch {
+        return // Malformed mid-edit: leave the DOM alone rather than blanking it.
+      }
+      if (urls.length === 0) {
+        container.innerHTML = container.dataset.ngfGalleryDefault
+        return
+      }
+
+      const template = container.lastElementChild as HTMLElement | null
+      if (!template) return
+
+      while (container.children.length > urls.length) container.lastElementChild?.remove()
+      while (container.children.length < urls.length) {
+        container.appendChild(template.cloneNode(true) as HTMLElement)
+      }
+
+      urls.forEach((url, i) => {
+        const child = container.children[i] as HTMLElement | undefined
+        if (!child) return
+        const img = (child.tagName === 'IMG' ? child : child.querySelector('img')) as HTMLImageElement | null
+        if (img) img.setAttribute('src', sanitizeImageUrl(url))
+      })
     }
     // Show/hide a whole section from a boolean-ish value: '' or 'true' => shown,
     // 'false' => hidden. On the live site we hard-hide with display:none. Inside
@@ -754,6 +812,10 @@ export default function NgfEditBridge() {
             document.querySelectorAll<HTMLElement>(`[data-ngf-field="${path}"]`).forEach(el => {
               if (isToggleField(el)) {
                 applyToggleState(el, obj)
+                return
+              }
+              if (isGalleryField(el)) {
+                applyGalleryState(el, obj)
                 return
               }
               const next = obj === '' ? (el.dataset.ngfDefault ?? '') : obj

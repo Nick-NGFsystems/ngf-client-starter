@@ -70,3 +70,57 @@ export function getItems(content: NgfSiteContent, prefix: string): Record<string
       return item
     })
 }
+
+/**
+ * Read a `gallery` field — an ordered list of image URLs held in ONE scalar.
+ *
+ * A `data-ngf-group` path must be exactly two segments and item sub-fields are
+ * flat scalars, so `products.items.0.photos.0` cannot be expressed — a per-item
+ * image LIST is impossible as a group. The gallery type encodes the list as JSON
+ * inside a single field instead, so it declares like any other sub-field.
+ *
+ * Usage — always pass your hardcoded fallback, same contract as `||`:
+ *
+ *   const photos = getGallery(content, `products.items.${i}.photos`, product.images)
+ *
+ * Annotate the CONTAINER, not the images, and give it exactly one child per
+ * photo — the bridge grows the list by cloning the last child:
+ *
+ *   <div data-ngf-field={`products.items.${i}.photos`}
+ *        data-ngf-label="Photos" data-ngf-type="gallery" data-ngf-section="Products">
+ *     {photos.map((src, n) => <div key={n}><img src={src} alt="" /></div>)}
+ *   </div>
+ *
+ * Never throws; returns `fallback` for missing, empty or malformed values.
+ */
+export function getGallery(
+  content: NgfSiteContent,
+  key: string,
+  fallback: string[] = [],
+): string[] {
+  const raw = content[key]
+  if (typeof raw !== 'string' || raw.trim() === '') return fallback
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    // Tolerate a bare URL stored before this field type existed.
+    return raw.includes('[') ? fallback : [raw.trim()]
+  }
+  if (!Array.isArray(parsed)) return fallback
+
+  const out: string[] = []
+  for (const entry of parsed) {
+    // Accept "url" and { src: "url" } so the format can carry alt text later
+    // without invalidating anything already published.
+    const src =
+      typeof entry === 'string'
+        ? entry
+        : entry && typeof entry === 'object' && typeof (entry as { src?: unknown }).src === 'string'
+          ? (entry as { src: string }).src
+          : null
+    if (src && src.trim() !== '') out.push(src.trim())
+  }
+  return out.length > 0 ? out : fallback
+}

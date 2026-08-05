@@ -1,8 +1,13 @@
 # NGFsystems — Universal Project Standards
 
-<!-- ngf-standards-version: 2.5.0 -->
-**Version 2.5.0 · last updated 2026-08-03.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
+<!-- ngf-standards-version: 2.6.0 -->
+**Version 2.6.0 · last updated 2026-08-05.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
 
+> **2.6.0** adds the **`gallery` field type** — an ordered list of images in one field. Per-item image
+> lists were structurally impossible (group paths are exactly two segments), so sites hardcoded their
+> extra photos and clients could never edit them; two hit this independently. Includes multi-file upload,
+> which was the other half of the complaint.
+>
 > **2.5.0** closes the cookie-consent gaps. `NEXT_PUBLIC_COOKIE_ANALYTICS` was documented only in prose,
 > so a site could gate GA4 behind consent correctly and still have the banner never render — consent never
 > granted, analytics silently never loading. It is now in `.env.local.example`, stated as an invariant, and
@@ -764,8 +769,57 @@ Do **not** try to merge a published array back over the defaults per-index (`con
 | `textarea` | resizable `<textarea>` (auto-grow) | `el.textContent` |
 | `color` | color picker + hex text | `el.textContent` |
 | `image` | URL field + Upload-from-computer + preview | `el.setAttribute('src', …)` |
+| `toggle` | a real `role="switch"` control | inline `display` on the annotated element |
+| `gallery` | thumbnail list, reorder/remove, **multi-file upload** | rebuilds the container's children |
 
-*(A fifth type, `toggle`, is declared in the app's `FieldType` union and handled by the bridge, but **the editor popover has no toggle control yet** — it falls through to a plain text input. **Don't use `data-ngf-type="toggle"` on a client site until that ships.** `NGF-Systems-app/CLAUDE.md` lists it as a supported value; this doc is the authority for what client sites may use.)*
+**`toggle`** — annotate the *section wrapper*. Always render the element and hide it with
+`style={{ display: 'none' }}`; never `{cond && <section>}`, because an unrendered section is invisible
+to the scraper and the client can never switch it back on. Test `content['about.visible'] === 'false'` —
+inverted from the intuitive check, because `''` (shown) is stripped before persisting, so only `'false'`
+is ever stored. *(This doc previously said the editor had no toggle control and told you not to use the
+type. That was wrong — a real switch control ships at `app/portal/website/page.tsx:1147`.)*
+
+### `gallery` — an ordered list of images in ONE field
+
+**Use this whenever one item needs MULTIPLE photos.** A `data-ngf-group` path must be exactly two
+segments and item sub-fields are flat scalars, so `products.items.0.photos.0` **cannot be expressed** —
+a per-item image *list* is impossible as a group. Two client sites hit that wall independently and both
+worked around it by hardcoding the extra photos, leaving them permanently uneditable. The `gallery` type
+encodes the list as JSON inside a single scalar, so it declares like any other sub-field.
+
+Annotate the **container**, not the images, and give it **exactly one child per photo** — the bridge
+grows the list by cloning the last child, so headings and "load more" buttons must stay outside it:
+
+```tsx
+const photos = getGallery(content, `products.items.${i}.photos`, product.images)
+
+<div
+  data-ngf-field={`products.items.${i}.photos`}
+  data-ngf-label="Photos"
+  data-ngf-type="gallery"
+  data-ngf-section="Products"
+>
+  {photos.map((src, n) => (
+    <div key={n}><img src={src} alt="" /></div>
+  ))}
+</div>
+```
+
+Declared inside a repeatable group like any other sub-field:
+
+```
+data-ngf-item-fields='[{"key":"photos","label":"Photos","type":"gallery"},{"key":"name","label":"Name","type":"text"}]'
+```
+
+| | |
+|---|---|
+| Stored as | JSON array of URLs — `["/a.jpg","/b.jpg"]`. An empty list stores `''`, not `'[]'`, so a cleared gallery falls back to the hardcoded default like every other field. |
+| Read with | `getGallery(content, key, fallback)` from `lib/ngf.ts`. Never throws; returns `fallback` for missing, empty or malformed values. |
+| Upload | **Multi-file** — select many photos at once. Uploads run sequentially so the chosen order survives, and commit incrementally so a mid-way failure keeps what already succeeded. |
+| Cap | 60 images per gallery. |
+
+**Do NOT** use a repeatable group for a per-item gallery, and do not fall back to annotating only the
+first image — that is exactly the pattern this type exists to replace.
 
 #### Large galleries (10+ photos in one place)
 
