@@ -16,7 +16,7 @@
  */
 
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
-import { join, relative, extname } from 'node:path'
+import { join, relative, extname, dirname } from 'node:path'
 
 const ROOT = process.cwd()
 const STRICT = process.argv.includes('--strict')
@@ -426,18 +426,28 @@ if (!vercelJson) {
 // old code — and `git init` + push would fork or clobber the real repo. Catch it
 // before any work is done rather than after.
 {
-  if (!has('.git')) {
+  // Walk UP for .git, the way git itself does. An app that lives in a
+  // subdirectory of its repo (Vercel Root Directory != '.') is still perfectly
+  // connected — failing it here reported a legitimately-cloned repo as detached.
+  let gitDir = null
+  for (let dir = ROOT, i = 0; i < 6; i++) {
+    if (existsSync(join(dir, '.git'))) { gitDir = join(dir, '.git'); break }
+    const parent = dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+
+  if (!gitDir) {
     fail(
       'Repo is connected to a remote',
-      'No .git directory — this folder is NOT a clone. Check GitHub for a repo of the same name before ' +
-        'editing anything: if one exists, this is a detached snapshot and your changes will never reach ' +
-        'the live site. Clone the real repo and work there. Do NOT `git init` this folder — that forks ' +
-        'or clobbers the remote.',
+      'No .git in this directory or any parent — this folder is NOT a clone. Check GitHub for a repo of ' +
+        'the same name before editing anything: if one exists, this is a detached snapshot and your ' +
+        'changes will never reach the live site. Clone the real repo and work there. Do NOT `git init` ' +
+        'this folder — that forks or clobbers the remote.',
     )
   } else {
-    const gitCfg = read('.git/config') ?? ''
-    // Assigned to a variable deliberately: a line starting with `/` after an
-    // expression is parsed as division, not a regex literal (ASI trap).
+    let gitCfg = ''
+    try { gitCfg = readFileSync(join(gitDir, 'config'), 'utf8') } catch { /* unreadable */ }
     const hasRemote = /\[remote /.test(gitCfg)
     hasRemote
       ? ok('Repo is connected to a remote')
