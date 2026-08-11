@@ -9,6 +9,7 @@
     "lint": "next lint",
     "doctor": "node scripts/ngf-doctor.mjs",
     "doctor:strict": "node scripts/ngf-doctor.mjs --strict",
+    "verify-orders": "node scripts/ngf-verify-orders.mjs",
     "sync-ngf": "node scripts/sync-ngf.mjs",
     "sync-ngf:check": "node scripts/sync-ngf.mjs --check"
   },

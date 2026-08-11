@@ -2518,3 +2518,58 @@ For the NGF main app additionally:
 - [ ] Clerk production instance has session token customized + domain verified
 - [ ] All Clerk + Stripe + Resend + Neon env vars added to Production / Preview / Development
 - [ ] Vercel Blob store provisioned and `BLOB_READ_WRITE_TOKEN` available (image uploads from the editor need this)
+
+---
+
+## Taking payments on a client site
+
+A storefront charges with its **own** payment provider and then **reports** the
+settled order to NGF. The platform never holds a provider credential — the token
+stays in this site's Vercel project, and NGF never becomes a place where client
+payment keys accumulate. It also means a Stripe or PayPal site posts the same
+shape as a Square one with no platform change.
+
+**Never put a payment provider token in `client_configs`.** `database_url` is a
+plaintext column today; a payment credential must not follow it there.
+
+### Files
+
+| File | Mode | What it is |
+|---|---|---|
+| `lib/ngf-order.ts` | canonical | The `OrderReportV1` contract + `reportOrderToNgf()`. A drifted copy mis-reports real money. |
+| `lib/ngf-store.ts` | canonical | Client-owned shipping/tax fetched from the portal, and the `quote()` formula NGF re-checks on ingest. |
+| `scripts/ngf-verify-orders.mjs` | canonical | Proves the wiring before a real order. |
+| `lib/square-checkout.ts` | once | Square adapter. Replace wholesale for another provider; `lib/ngf-order.ts` does not change. |
+
+### Rules that are about money, not style
+
+1. **Re-price on the server, and fail closed.** Cart prices are display only. Anything
+   that cannot be priced exactly rejects the whole order — never fall back to a
+   base price, and never silently drop an unknown line.
+2. **One stable `orderRef` per cart**, generated once and reused across retries.
+   Both provider idempotency keys derive from it. A key regenerated per attempt
+   means a network timeout plus a retry charges twice.
+3. **Clear the cart only after the charge is confirmed settled.** Earlier loses the
+   basket on a decline; never means a refresh can pay again.
+4. **Read the charge amount back from the provider's order**, never recompute it.
+   A one-cent disagreement with their tax engine is rejected as an amount
+   mismatch that looks exactly like a declined card.
+5. **Branch on the provider's error CATEGORY, not the HTTP status.** Declines and
+   your own amount mismatches are both HTTP 400.
+6. **Money moves at exactly one step.** Report PENDING before it and PAID after;
+   never fail the buyer's response after the charge succeeded, and never void a
+   settled payment because a downstream write failed.
+7. **On an ambiguous network failure, retry with the SAME idempotency key**, then
+   cancel by that key. Only if both are inconclusive tell the buyer not to retry.
+
+### Setup
+
+1. Client generates their provider credentials; put them in **this site's** Vercel
+   env, never in a chat or a ticket.
+2. NGF admin → client hub → Access → enable **Orders & Store**.
+3. NGF admin → client hub → Overview → **Generate secret** → paste into this site
+   as `NGF_ORDERS_SECRET`. Shown once.
+4. Client sets shipping and tax in their portal under **Store**.
+5. `npm run verify-orders` — must pass before a real card is used.
+6. A real sandbox purchase through the site, then confirm the order, both emails
+   and the provider dashboard all agree. Delete the test order.
