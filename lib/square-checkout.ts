@@ -1,4 +1,24 @@
-import type { CheckoutLine } from '@/lib/checkout'
+/**
+ * One priced line, exactly as it will be charged.
+ *
+ * Declared here rather than imported, because the starter has no cart module —
+ * how a site resolves a cart is site-specific, but what it hands to Square is
+ * not. Your `lib/checkout.ts` (or equivalent) should produce this shape; keep
+ * the fields identical so the two stay interchangeable.
+ *
+ * Every money value is INTEGER CENTS. Never a float, never a formatted string.
+ */
+export interface CheckoutLine {
+  id: string
+  sku: string
+  title: string
+  variant: string | null
+  qty: number
+  unitCents: number
+  lineCents: number
+  imageUrl: string | null
+  customization: string | null
+}
 
 /**
  * Square Orders + Payments.

@@ -91,8 +91,12 @@ export default function BookingWidget({ base, domain }: { base: string; domain: 
       })
       const json = await res.json()
       if (res.status === 409) {
-        setError(json.error || 'That time was just taken. Please pick another.')
+        // Refresh the grid FIRST, then set the message. loadSlots() opens with
+        // setError(null), so setting it beforehand wiped the only explanation the
+        // customer ever gets — they just saw the form collapse and the times
+        // reshuffle, with no idea their slot had gone.
         await loadSlots()
+        setError(json.error || 'That time was just taken. Please pick another.')
         return
       }
       if (!res.ok || !json.ok) throw new Error(json.error || 'Could not book. Please try again.')
