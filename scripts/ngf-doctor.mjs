@@ -128,7 +128,13 @@ if (!revPath) {
   // it posts to /api/leads/ingest — the prospect-signup path used by NGF's own
   // marketing site, where an enquiry is a lead for the AGENCY rather than a
   // customer of a client. Both persist; only email-only routes lose the lead.
-  const REACHES = /relayLeadToNgf|api\/leads\/ingest/
+    // reportOrderToNgf was added after this rule was written, and a checkout
+    // route trips looksLikeLead for perfectly good reasons: it POSTs, it takes
+    // a name and an email, and it sends a receipt. But an order IS the
+    // persisted record — exactly what this rule asks for. Without it a
+    // compliant storefront fails a rule it satisfies, and the fix somebody
+    // reaches for is bolting a lead relay onto a payment route.
+  const REACHES = /relayLeadToNgf|api\/leads\/ingest|reportOrderToNgf/
   const mailing = API_ROUTES.filter((f) => looksLikeLead(f.src) && !/revalidate|\bngf-lead\b/.test(f.path))
   const relayed = mailing.filter((f) => REACHES.test(f.src))
   const orphaned = mailing.filter((f) => !REACHES.test(f.src))
