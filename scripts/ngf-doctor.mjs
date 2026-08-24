@@ -415,6 +415,40 @@ has('app/robots.ts') || has('app/robots.js')
 const hasJsonLd = FILES.some((f) => /application\/ld\+json/.test(f.src))
 hasJsonLd ? ok('Structured data (JSON-LD)') : warn('Structured data (JSON-LD)', 'No LocalBusiness JSON-LD found — required by the SEO launch gate before launch.')
 
+// Dynamic routes must be enumerated in the sitemap or they are invisible to
+// Google. A static (non-async) sitemap cannot enumerate them — it has no way to
+// read published content. This has shipped: a portfolio grew nine [slug] pages
+// that never appeared in sitemap.xml, and every other SEO check still passed.
+{
+  const dynamicRoutes = FILES
+    .filter((f) => /(^|\/)app\/.*\[[^\]]+\]\/page\.(t|j)sx?$/.test(f.path))
+    .map((f) => f.path)
+
+  if (dynamicRoutes.length === 0) {
+    ok('Dynamic routes in sitemap', 'No dynamic routes to enumerate.')
+  } else {
+    const sitemapPath = ['app/sitemap.ts', 'app/sitemap.js'].find(has)
+    const sitemapSrc = sitemapPath ? stripComments(read(sitemapPath) ?? '') : ''
+    // An async sitemap is the only shape that can await published content.
+    const isAsync = /export\s+default\s+async\s+function/.test(sitemapSrc) ||
+                    /Promise<\s*MetadataRoute\.Sitemap\s*>/.test(sitemapSrc)
+
+    if (!sitemapPath) {
+      // Already failed above for the missing file; don't double-report.
+      ok('Dynamic routes in sitemap', 'Skipped — no sitemap to check.')
+    } else if (!isAsync) {
+      fail(
+        'Dynamic routes in sitemap',
+        `${dynamicRoutes.length} dynamic route(s) (${dynamicRoutes.join(', ')}) but ${sitemapPath} is a ` +
+          `static function, so it cannot emit their URLs. Those pages are invisible to search engines. ` +
+          `Make the sitemap async, read the same content source the route uses, and map over it.`,
+      )
+    } else {
+      ok('Dynamic routes in sitemap', `${dynamicRoutes.length} dynamic route(s); sitemap is async.`)
+    }
+  }
+}
+
 // ── 6. Build cost discipline ─────────────────────────────────────────────────
 const vercelJson = read('vercel.json')
 if (!vercelJson) {

@@ -970,6 +970,79 @@ That's tolerable for "swap a few photos occasionally" workflows. It gets painful
 - **Don't annotate the `<PhotoView>` wrapper** — annotate only the `<img>` inside it. The bridge needs the actual image element for src updates.
 - **Don't nest the group path deeper than 2 segments** — `project.gallery` works, `projects.0.gallery` will silently break the delete + drag controls.
 
+### Detail pages for group items (`/thing/[slug]`)
+
+A portfolio, property list or team roster usually wants a page per item, not just a grid. The group lives
+on the index page; the detail page renders the *same* item's fields on their own route.
+
+**Per-item galleries: use numbered slots, not a nested group.** The two-segment rule above means a
+per-item gallery cannot be a group — `projects.0.photos` breaks the editor controls. Where the item count
+is fixed and small, the doc's `projectAGallery.items` naming works; where the collection is **dynamic**
+(the client adds and removes projects), it doesn't scale, because each project would need its own named
+group. Use a fixed number of flat slots on the item instead and declare them in `data-ngf-item-fields`:
+
+```ts
+{ key: 'photo1', label: 'Gallery Photo 1', type: 'image' },
+{ key: 'photo2', label: 'Gallery Photo 2', type: 'image' },
+// …a sane cap, e.g. 4–6
+```
+
+Render every slot even when empty so the client can fill them; hide the empty ones visually (see below).
+
+**Derive slugs from a field, and keep index and slug in one resolver.** The grid and the detail page must
+never disagree about which item is which. Put the resolution in `lib/<thing>.ts` and have both import it:
+
+```ts
+export function projectSlug(title: string, index: number): string {
+  return `${slugify(title) || 'project'}-${index + 1}`   // titles repeat; index disambiguates
+}
+export function getProjects(content: NgfSiteContent, defaults): Project[] { /* …one place… */ }
+```
+
+Note the trade-off: a slug containing the index **changes when the client reorders the group**, breaking
+any external link. That's acceptable for placeholder portfolios; if the URLs will be shared or indexed,
+add an explicit `slug` field to the item and fall back to the derived one.
+
+**One DOM element per field path — always.** A detail page tempts you to annotate the same image twice
+(a thumbnail strip *and* the large viewer). Don't. The bridge resolves a field with
+`document.querySelector`, so it writes to whichever element it happens to match first and the other one
+silently never updates. Annotate one — usually the thumbnail, since that's what the client clicks — and
+leave the other as a plain, unannotated `<img>`. This is the mirror image of rule 6 in "Critical
+content-rendering rules": one path, one element.
+
+**The detail page MUST be in `sitemap.ts`.** This is the part that bites hardest, because it fails in two
+ways at once and both are silent:
+
+- Google never sees the pages, and
+- **the portal scraper never sees them either** — it discovers editable fields by walking your sitemap,
+  so any field that only appears on an un-listed detail page will never show up in the client's sidebar.
+
+A static `sitemap.ts` cannot enumerate dynamic routes. Make it `async`, read the same content source the
+route reads, and map over it:
+
+```ts
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const content = await getNgfContent()
+  const projects = getProjects(content, DEFAULT_PROJECTS)
+  return [...staticPages, ...projects.map(p => ({ url: `${base}/showcase/${p.slug}`, lastModified: now }))]
+}
+```
+
+`npm run doctor` fails the build if a repo has an `app/**/[slug]/page.tsx` and a non-async sitemap.
+
+Remember the scraper's budget — **home page plus up to 12 sitemap URLs**. With many detail pages you will
+exceed it, so make sure the *group definition itself* (with its full `data-ngf-item-fields`) lives on the
+index page, which is always scraped. The detail pages then need no new schema; they reuse the same paths.
+
+**Empty optional fields: render, but hide.** Credits like "Photographed by" must exist in the DOM to be
+editable, yet a label with nothing beside it looks broken on the live site. Hide empty rows in CSS and
+re-show them inside the editor, which sets `data-ngf-edit` on `<html>`:
+
+```css
+.detail-row:has(dd:empty) { display: none; }
+[data-ngf-edit='true'] .detail-row:has(dd:empty) { display: grid; }
+```
+
 **Image sizing in the grid — get this right or the editor experience suffers:**
 
 Galleries that look fine on the public site can become hard to manage in the editor when image sizes are extreme in either direction. The editor renders the gallery at the same size the live site does (it's an iframe of the live site).
@@ -1000,7 +1073,23 @@ Key points: 2 columns on mobile (large enough to manage), 3-4 columns on desktop
 
 1. **Always use `||`, never `??` for fallbacks.** Published content can include explicit `''`. `??` only catches `null`/`undefined`, so an empty value would render an empty element instead of falling through to the hardcoded default.
 2. **Always provide a hardcoded fallback.** New clients have no published content — the site needs to render correctly from `lib/site-data.ts` (or wherever you keep defaults) before the first publish.
-3. **Use plain `<img>` for image fields.** `next/image` with `fill` wraps the real img element so the bridge can't read or write `src`.
+3. **Use plain `<img>` for image fields.** `next/image` with `fill` wraps the real img element so the bridge can't read or write `src`. **A CSS `background-image` is equally unreachable** — the bridge sets the `src` attribute of an element, and a background has none. A page hero written as `style={{ backgroundImage: url(...) }}` is therefore *not editable*, however well annotated the text over it is. Render heroes as a positioned `<img>` with the overlay and copy stacked above it:
+
+   ```tsx
+   <section className="relative min-h-[42vh] flex items-center">
+     <img
+       src={content['page.heroImage'] || '/hero-default.jpg'}
+       alt=""
+       data-ngf-field="page.heroImage"
+       data-ngf-label="Hero Image"
+       data-ngf-type="image"
+       data-ngf-section="Page Hero"
+       className="absolute inset-0 w-full h-full object-cover"
+     />
+     <div className="absolute inset-0 bg-black/50" />
+     <div className="relative z-10 …">{/* eyebrow, headline */}</div>
+   </section>
+   ```
 4. **Don't omit `data-ngf-label` or `data-ngf-section`.** The scraper silently skips elements missing either, and they won't appear in the editor sidebar.
 5. **`data-ngf-section` is the human-readable label.** The grouping key is always derived from the first dot-segment of `data-ngf-field` (e.g. `hero.headline` → section key `hero`, regardless of what `data-ngf-section` says).
 6. **One canonical content path per unique piece of data — never duplicate paths.** When the same logical content appears in multiple places (business name in header AND footer, phone number in nav AND contact page, etc.), every instance MUST read from the same `data-ngf-field` path and the same `content['…']` lookup. This is the single most common cause of "I edited it but only some places updated" complaints.
@@ -1158,7 +1247,7 @@ node ../ngf-client-starter/scripts/ngf-doctor.mjs   # ad-hoc audit only — neve
 
 …but **never leave that form in `package.json`**. A relative path out of the repo resolves on the machine that wrote it and nowhere else — not on Vercel, not in a fresh clone, not in CI — so the launch gate silently cannot run in the only environment that matters. The doctor fails itself on this (`Doctor is self-contained`).
 
-It checks the mechanically-verifiable subset of this doc: content cache mode (including `force-dynamic` on a page that reads NGF content, which defeats ISR even when the fetch is correct), whether `/api/revalidate` actually calls `revalidatePath` **and fails closed**, bridge present *and mounted* **and actually the real bridge** (protocol handlers + size floor, so a stub can't pass), the presence of a portal **binding marker**, CSP + security headers, `sitemap`/`robots`/JSON-LD, `vercel.json` `ignoreCommand`, `??`-instead-of-`||` fallbacks, and annotation correctness — every `data-ngf-field` carrying `label` + `section` (the scraper silently drops the rest), one `data-ngf-group` per list, group paths exactly two segments deep, and no `next/image`-with-`fill` on an annotated element.
+It checks the mechanically-verifiable subset of this doc: content cache mode (including `force-dynamic` on a page that reads NGF content, which defeats ISR even when the fetch is correct), whether `/api/revalidate` actually calls `revalidatePath` **and fails closed**, bridge present *and mounted* **and actually the real bridge** (protocol handlers + size floor, so a stub can't pass), the presence of a portal **binding marker**, CSP + security headers, `sitemap`/`robots`/JSON-LD, **an async sitemap whenever the app has a dynamic `[slug]` route** (a static one can't enumerate those URLs, which hides them from Google *and* from the schema scraper), `vercel.json` `ignoreCommand`, `??`-instead-of-`||` fallbacks, and annotation correctness — every `data-ngf-field` carrying `label` + `section` (the scraper silently drops the rest), one `data-ngf-group` per list, group paths exactly two segments deep, and no `next/image`-with-`fill` on an annotated element.
 
 **A green doctor is necessary, not sufficient** — it cannot see whether the site is bound to the right client. That's the second check.
 
@@ -2270,7 +2359,11 @@ NGF main app additionally:
 |---|---|
 | Editor sidebar doesn't show a field you annotated | Check both `data-ngf-label` and `data-ngf-section` are present — scraper skips elements missing either |
 | Editor sidebar shows an empty input box | Probably an `sr-only` anchor with no inner content — put `{value}` inside the span |
-| Image field click does nothing | You used `next/image` with `fill`. Switch to plain `<img>` with `data-ngf-field` directly on it |
+| Image field click does nothing | You used `next/image` with `fill`, or a CSS `background-image`. Switch to a plain `<img>` with `data-ngf-field` directly on it |
+| Sticky header scrolls away and never comes back | `overflow-x: hidden` on `html` or `body`. It makes that element a scroll container, so `position: sticky` has nothing to pin against and the header just scrolls off like normal content. Use `overflow-x: clip` — it clips without creating a scroll container. The markup looks correct, so this survives code review; it only shows up when scrolling a real browser |
+| A collapsing header tier flickers rapidly near the top | The tier is in the layout flow, so expanding it changes document height, the browser compensates the scroll offset, and that bounces you back across a single show/hide threshold. Use hysteresis — separate expand and collapse thresholds with a dead zone wider than the tier's height — and keep any "never hide near the top" zone above `collapseThreshold + tierHeight` so the same jump can't spoof scroll-direction detection |
+| Edited a phone/email but the `tel:`/`mailto:` link still goes to the old value | The bridge writes `textContent`; the `href` is server-rendered from the same field and only regenerates on the next publish + page load. Expected — verify after republishing, not in live preview |
+| Fields on a `[slug]` detail page never appear in the editor sidebar | That route isn't in `sitemap.xml`. The scraper only walks the sitemap, so an unlisted page is invisible to the editor as well as to Google. Make `sitemap.ts` async and emit the dynamic URLs |
 | Stored value renders as empty instead of fallback | You used `??` instead of `||`. Empty strings only fall through with `||` |
 | Editor preview iframe blocked by browser | Missing `frame-ancestors 'self' https://app.ngfsystems.com https://*.vercel.app` in CSP header |
 | Portal editor "site_url not NGF" | Either `NEXT_PUBLIC_SITE_URL` doesn't match `client_configs.site_url`, or your site's HTML doesn't include the `ngf-public-api` meta tag (verify by viewing source) |
