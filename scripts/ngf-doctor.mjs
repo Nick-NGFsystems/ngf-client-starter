@@ -108,6 +108,27 @@ if (!revPath) {
   } else {
     ok('/api/revalidate fails closed')
   }
+  // The portal sends the secret it minted for THIS client and the site compares
+  // it against its own env var. The two only meet if the name matches exactly.
+  // A site reading REVALIDATION_SECRET (no WEBSITE_ prefix) answers every
+  // publish with 401 and the client waits out the 60s ISR window instead —
+  // which looks like "the editor is a bit slow", not like a broken integration,
+  // so it survives for months. One live site was found doing this.
+  const secretVars = [...rev.matchAll(/process\.env\.([A-Z0-9_]+)/g)].map((m) => m[1])
+  const revalidationVars = [...new Set(secretVars.filter((v) => /REVALIDAT/.test(v)))]
+  if (revalidationVars.length === 0) {
+    warn(
+      '/api/revalidate secret name',
+      `${revPath} reads no REVALIDATION env var — the portal cannot authenticate a cache-bust against this site.`,
+    )
+  } else if (!revalidationVars.includes('WEBSITE_REVALIDATION_SECRET')) {
+    fail(
+      '/api/revalidate secret name',
+      `${revPath} gates on ${revalidationVars.join(', ')}, but the portal sends the secret for WEBSITE_REVALIDATION_SECRET. Every instant publish 401s silently and the client waits out the 60s ISR window. Rename the env var on the site AND in Vercel.`,
+    )
+  } else {
+    ok('/api/revalidate secret name')
+  }
 }
 
 // ── 2b. Lead capture reaches the central store ───────────────────────────────
@@ -472,11 +493,25 @@ if (!vercelJson) {
     'vercel.json ignoreCommand',
     'vercel.json runs scripts/vercel-skip-docs.sh but that file is not in the repo. Vercel reads a missing command as a failed deployment, so nothing deploys at all.',
   )
-} else if (skipScript && /\r\n/.test(skipScript)) {
-  // bash on Linux reads the CR as part of each command, so every line fails.
+} else if (skipScript && !/^\s*\*\.sh\s+.*eol=lf/m.test(read('.gitattributes') || '')) {
+  // Deliberately checks .gitattributes, NOT the working copy's line endings.
+  // On Windows with core.autocrlf=true the checked-out file is CRLF even when
+  // the committed blob is LF — and it is the BLOB that Vercel gets, so failing
+  // on the working copy cries wolf in every repo on a Windows machine, which is
+  // how a launch gate gets ignored. The durable risk is the missing rule: with
+  // no '*.sh text eol=lf', a commit from Windows can persist CRLF into the blob,
+  // and then Linux bash fails on every line of the script that decides whether
+  // the site deploys at all.
   fail(
     'vercel.json ignoreCommand',
-    "scripts/vercel-skip-docs.sh has CRLF line endings; under Vercel's Linux bash every line fails with a stray carriage return and the deploy errors. Add '*.sh text eol=lf' to .gitattributes and re-commit the file with LF.",
+    "scripts/vercel-skip-docs.sh exists but .gitattributes has no '*.sh text eol=lf' rule. Nothing stops a Windows commit storing it with CRLF, and Vercel's Linux bash then fails on every line — no deploys at all. Add the rule and re-commit the script.",
+  )
+} else if (skipScript && /\r\n/.test(skipScript)) {
+  // The rule exists, so the committed blob is LF and deploys are safe; this
+  // copy just has not been re-checked-out. Only affects running it locally.
+  warn(
+    'vercel.json ignoreCommand',
+    'Your working copy of scripts/vercel-skip-docs.sh has CRLF endings even though .gitattributes forces LF. Vercel is unaffected (it gets the LF blob), but running it locally will fail. Re-checkout the file to refresh it.',
   )
 } else {
   ok('vercel.json ignoreCommand')
