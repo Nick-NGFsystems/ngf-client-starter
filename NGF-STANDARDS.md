@@ -267,7 +267,7 @@ Two things to know before you take "latest stable" literally:
 | Styling | Tailwind CSS | latest (3 or 4) |
 | Database | Neon Postgres | only if the site needs its own data |
 | ORM | Drizzle (preferred) or Prisma | choice depends on site needs |
-| Email | Resend | for contact forms / transactional |
+| Email | Resend | transactional mail a site sends itself. **Not** contact forms — those use `<LeadForm>` into the central store, and a new site has no Resend key of its own (see "Lead capture") |
 | Animations | Framer Motion | optional |
 | Validation | Zod | for any form/API input |
 | Deployment | Vercel | one project per client site |
@@ -361,9 +361,10 @@ scripts/ngf-doctor.mjs ← conformance checker; `npm run doctor` must exit 0
 
 > Reproduced below **byte-for-byte from `ngf-client-starter/lib/ngf.ts`**. If you change
 > that file, update this block in the same commit — a stale copy here means every site
-> built from this doc is subtly wrong. (It was: this block previously omitted
-> `ngfEndpoints()`, which `LeadForm` and `BookingWidget` both import, so a site built by
-> following the doc literally would not compile.)
+> built from this doc is subtly wrong. (It has happened twice: this block once omitted
+> `ngfEndpoints()`, which `LeadForm` and `BookingWidget` both import, and then omitted
+> `getGallery()`, which the "Large galleries" section tells you to call — either way a site
+> built by following the doc literally would not compile.)
 
 ```typescript
 export type NgfSiteContent = Record<string, string>
@@ -437,6 +438,60 @@ export function getItems(content: NgfSiteContent, prefix: string): Record<string
       }
       return item
     })
+}
+
+/**
+ * Read a `gallery` field — an ordered list of image URLs held in ONE scalar.
+ *
+ * A `data-ngf-group` path must be exactly two segments and item sub-fields are
+ * flat scalars, so `products.items.0.photos.0` cannot be expressed — a per-item
+ * image LIST is impossible as a group. The gallery type encodes the list as JSON
+ * inside a single field instead, so it declares like any other sub-field.
+ *
+ * Usage — always pass your hardcoded fallback, same contract as `||`:
+ *
+ *   const photos = getGallery(content, `products.items.${i}.photos`, product.images)
+ *
+ * Annotate the CONTAINER, not the images, and give it exactly one child per
+ * photo — the bridge grows the list by cloning the last child:
+ *
+ *   <div data-ngf-field={`products.items.${i}.photos`}
+ *        data-ngf-label="Photos" data-ngf-type="gallery" data-ngf-section="Products">
+ *     {photos.map((src, n) => <div key={n}><img src={src} alt="" /></div>)}
+ *   </div>
+ *
+ * Never throws; returns `fallback` for missing, empty or malformed values.
+ */
+export function getGallery(
+  content: NgfSiteContent,
+  key: string,
+  fallback: string[] = [],
+): string[] {
+  const raw = content[key]
+  if (typeof raw !== 'string' || raw.trim() === '') return fallback
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    // Tolerate a bare URL stored before this field type existed.
+    return raw.includes('[') ? fallback : [raw.trim()]
+  }
+  if (!Array.isArray(parsed)) return fallback
+
+  const out: string[] = []
+  for (const entry of parsed) {
+    // Accept "url" and { src: "url" } so the format can carry alt text later
+    // without invalidating anything already published.
+    const src =
+      typeof entry === 'string'
+        ? entry
+        : entry && typeof entry === 'object' && typeof (entry as { src?: unknown }).src === 'string'
+          ? (entry as { src: string }).src
+          : null
+    if (src && src.trim() !== '') out.push(src.trim())
+  }
+  return out.length > 0 ? out : fallback
 }
 ```
 
@@ -1808,7 +1863,7 @@ Most NGF marketing sites don't need auth. If your site has a logged-in admin or 
 
 - **Clerk** is the standard. Pin `@clerk/nextjs@6` (v7 has breaking JWT changes).
 - Customize the session token at Clerk dashboard → Configure → Sessions → add `{ "metadata": "{{user.public_metadata}}" }` so `sessionClaims.metadata.role` exists.
-- Layout components must NEVER do auth checks — middleware handles all auth.
+- **Middleware is the first gate, never the only one.** Presentational layout components (`components/layout/*`) still do no auth, but route-segment layouts AND pages that read privileged data MUST guard server-side as well — middleware has published bypass CVEs. See Security baseline § 6.
 - After setting a role, the user must sign out and back in for it to take effect.
 - Public routes (e.g. tokenized booking links sent via email — customers don't have accounts) MUST be in the middleware's `createRouteMatcher` whitelist or they'll be redirected to sign-in.
 
@@ -2338,18 +2393,18 @@ These apply to **every** project, client site or main app.
 7. Mobile-first responsive — every page works at 375 / 768 / 1280
 8. Never ship a feature without testing the unhappy paths
 9. Never push without running `npm run build` or `npx tsc --noEmit` first
-11. Never launch a client site without `npm run doctor` exiting 0 and Admin → Ecosystem showing it **Connected**
-12. Never let middleware be the only authorization gate on a page or route that reads other clients' data — guard server-side too (Security baseline § 6)
-10. Never build a custom image modal / lightbox. Use the `react-photo-view` pattern from "Universal interaction patterns." Every NGF site uses the same library — visitors should feel the same interaction across sites.
+10. Never launch a client site without `npm run doctor` exiting 0 and Admin → Ecosystem showing it **Connected**
+11. Never let middleware be the only authorization gate on a page or route that reads other clients' data — guard server-side too (Security baseline § 6)
+12. Never build a custom image modal / lightbox. Use the `react-photo-view` pattern from "Universal interaction patterns." Every NGF site uses the same library — visitors should feel the same interaction across sites.
 
 NGF main app additionally:
 - One Prisma instance — always `import { db } from '@/lib/db'`
 - `@clerk/nextjs@6` — never `@latest`
-- Next.js `15.3.8` — never `16+`
+- Next.js — the **latest patch of the 15.5.x line**, never `16+` yet (Next 15 EOL 2026-10-21). Never an older 15.x minor: upstream patches only the newest minor of a supported major, so `15.3.8` sits behind the App Router middleware-bypass fix. See "Version pinning"
 - Never `npx prisma` — always the local binary
 - Portal route paths must have `portal-` prefix
 - `tsconfig.json` must have `baseUrl` + `paths` or route groups silently 404
-- Never put auth checks in layout components — middleware only
+- Presentational layout components do no auth, but every `/admin` route-segment layout and page guards server-side too — middleware alone is not a gate (see rule 11)
 
 ---
 
@@ -2429,7 +2484,7 @@ The payoff: the feature inherits the draft/publish/revert UX, the 60s ISR + inst
 
 ### Booking / appointments — the built native module (integrate, don't rebuild)
 
-Native scheduling is **built** — a structured collection per the rules above: data in the central NGF DB keyed by `client_id`, gated by `feature_booking`. **Never rebuild a per-site booking system and never reuse the legacy external-DB / service-request pattern** (one early site has its own Neon DB for service requests; that approach is deprecated and must not be copied). A client site *integrates* this module; it does not implement scheduling itself. (Delivered on `NGF-Systems-app` `feat/booking-v1` + `ngf-client-starter` `feat/booking-widget`; internal design doc `BOOKING-V1-SPEC.md`. Merge those before relying on it.)
+Native scheduling is **built** — a structured collection per the rules above: data in the central NGF DB keyed by `client_id`, gated by `feature_booking`. **Never rebuild a per-site booking system and never reuse the legacy external-DB / service-request pattern** (one early site has its own Neon DB for service requests; that approach is deprecated and must not be copied). A client site *integrates* this module; it does not implement scheduling itself. (Design notes: `docs/booking.md` in `NGF-Systems-app`. Both delivery branches are merged and the module is live — nothing to merge before using it.)
 
 **Data model (central NGF DB, single-provider MVP; `provider_id` reserved for multi-staff):** `BookingConfig` (per client: `timezone`, `slot_interval_min`, `lead_time_min`, `max_advance_days`, `buffer_min`, `enabled`), `AvailabilityRule` (weekly hours), `BlackoutDate` (closed ranges), `Service` (name/duration/price), `Appointment` (customer + `start_at`/`end_at` **UTC** + `status` SCHEDULED|COMPLETED|CANCELLED|NO_SHOW|LATE + `cancelled_by` + `manage_token`). All times stored UTC; the business timezone lives on `BookingConfig`.
 
@@ -2501,7 +2556,7 @@ The honeypot is mandatory and must be **non-semantic** — `_gotcha`, never `com
 
 **Features that need their own data (service requests, quotes).** *(Booking is NOT one of these — use the native module above.)* Give the client site its **own** Neon DB via Drizzle, tables scoped by `client_id`. For customer-facing flows where the customer has no account, use **tokenized public links** (random token + TTL, validated server-side) and whitelist those routes in middleware. Schema changes live in the **client site repo**, not the main app; record any migration you can't verify live in that repo's Known Gaps.
 
-**Auth area (customer or staff login).** Clerk v6 (`@clerk/nextjs@6` — never `@latest`). Customize the session token for roles, let middleware handle all auth (never in layout components), whitelist public/tokenized routes. Remember the Clerk custom-domain CSP carve-out on production keys. See "Auth."
+**Auth area (customer or staff login).** Clerk v6 (`@clerk/nextjs@6` — never `@latest`). Customize the session token for roles, whitelist public/tokenized routes, and guard server-side in the route segment as well as in middleware (never in presentational layout components). Remember the Clerk custom-domain CSP carve-out on production keys. See "Auth."
 
 **Third-party integration (maps, embeds, scripts, external APIs).** Three things, every time: (1) add the origin to the CSP — `script-src` for scripts, `connect-src` for fetch/XHR, `frame-src` for iframes/embeds; (2) keys go in server-only env vars unless the provider's key is explicitly public (then `NEXT_PUBLIC_` is fine, e.g. a GA measurement ID); (3) load scripts with `next/script` and an appropriate `strategy`. Re-run the security checklist afterward.
 
