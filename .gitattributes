@@ -1,2 +1,11 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Shell scripts run on Linux under Vercel's bash. A CRLF checkout makes every
+# line fail with $'': command not found — and vercel-skip-docs.sh decides
+# whether the site deploys at all, so that failure is a broken deploy pipeline.
+*.sh text eol=lf
+
+# The canonical standards doc is fetched cross-platform from a raw GitHub URL by
+# AI sessions. Lock it to LF so every edit is a clean content diff, not CRLF churn.
+NGF-STANDARDS.md text eol=lf
