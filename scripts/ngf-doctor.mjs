@@ -451,10 +451,33 @@ hasJsonLd ? ok('Structured data (JSON-LD)') : warn('Structured data (JSON-LD)', 
 
 // ── 6. Build cost discipline ─────────────────────────────────────────────────
 const vercelJson = read('vercel.json')
+const skipScript = read('scripts/vercel-skip-docs.sh')
 if (!vercelJson) {
   warn('vercel.json ignoreCommand', 'No vercel.json — every commit (including docs-only) burns a build.')
 } else if (!/ignoreCommand/.test(vercelJson)) {
   warn('vercel.json ignoreCommand', 'No ignoreCommand — docs-only commits still trigger builds.')
+} else if (/HEAD\^/.test(vercelJson)) {
+  // The inline rule compares the LAST commit of a push to its parent. A push
+  // whose final commit is docs-only therefore cancels the WHOLE build, and the
+  // site silently keeps serving the previous deploy. It cost the main app a
+  // missing deploy on 2026-09-08.
+  warn(
+    'vercel.json ignoreCommand',
+    'Still on the inline HEAD^ rule: it sees only the last commit of a push, so a push ending in a docs-only commit skips the build and the site stays on old code. Use "bash scripts/vercel-skip-docs.sh", which diffs against the last deployment.',
+  )
+} else if (/vercel-skip-docs\.sh/.test(vercelJson) && !skipScript) {
+  // Vercel treats a non-0/1 exit from the ignore step as a FAILED deployment,
+  // so a missing script does not merely fail to skip — it breaks every deploy.
+  fail(
+    'vercel.json ignoreCommand',
+    'vercel.json runs scripts/vercel-skip-docs.sh but that file is not in the repo. Vercel reads a missing command as a failed deployment, so nothing deploys at all.',
+  )
+} else if (skipScript && /\r\n/.test(skipScript)) {
+  // bash on Linux reads the CR as part of each command, so every line fails.
+  fail(
+    'vercel.json ignoreCommand',
+    "scripts/vercel-skip-docs.sh has CRLF line endings; under Vercel's Linux bash every line fails with a stray carriage return and the deploy errors. Add '*.sh text eol=lf' to .gitattributes and re-commit the file with LF.",
+  )
 } else {
   ok('vercel.json ignoreCommand')
 }

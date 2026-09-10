@@ -66,6 +66,7 @@ const MANIFEST = [
   { path: 'lib/ngf-order.ts',             mode: 'canonical', note: 'order contract + reportOrderToNgf — a drifted copy mis-reports real money' },
   { path: 'lib/ngf-store.ts',             mode: 'canonical', note: 'client-owned shipping/tax + the quote formula NGF re-checks' },
   { path: 'scripts/ngf-verify-orders.mjs', mode: 'canonical', note: 'proves payment wiring before a real order' },
+  { path: 'scripts/vercel-skip-docs.sh',  mode: 'canonical', note: 'the deploy-skip rule — a drifted copy silently stops the site deploying' },
   { path: 'lib/square-checkout.ts',       mode: 'once',      note: 'Square adapter — replace wholesale for another provider' },
   { path: 'scripts/ngf-doctor.mjs',       mode: 'canonical', note: 'the launch gate' },
   { path: 'scripts/sync-ngf.mjs',         mode: 'canonical', note: 'this script' },
