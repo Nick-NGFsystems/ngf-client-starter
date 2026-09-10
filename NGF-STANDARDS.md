@@ -1,8 +1,16 @@
 # NGFsystems — Universal Project Standards
 
-<!-- ngf-standards-version: 2.8.0 -->
-**Version 2.8.0 · last updated 2026-08-05.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
+<!-- ngf-standards-version: 2.9.0 -->
+**Version 2.9.0 · last updated 2026-09-09.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
 
+> **2.9.0** — **the deploy-skip rule was silently cancelling real deploys.** The inline
+> `git diff HEAD^ HEAD` ignoreCommand every repo shipped with compares only the LAST commit of a
+> push, so a push ending in a docs-only commit cancelled the whole build and the site kept serving
+> the previous one — reported as *Canceled*, never *Error*. Replaced fleet-wide by the canonical
+> `scripts/vercel-skip-docs.sh`, which diffs from the last deployed commit; it is now a synced
+> canonical file, needs `*.sh text eol=lf`, and the doctor warns on the old form and fails on a
+> missing or CRLF script.
+>
 > **2.8.0** — **the scraper now reads every page in your `sitemap.xml`, not just the home page.** Sub-page
 > annotations used to be permanently invisible to the editor, which cost two clients (per-service galleries
 > and an entire product catalogue). Your sitemap is now load-bearing: a page missing from it stays invisible.
@@ -1208,7 +1216,7 @@ When the bridge caches the default value of an annotated element on mount, it wa
 3. [ ] **`app/layout.tsx`** — mount `<NgfEditBridge />`, call `getNgfContent()` once, thread `content` through any layout components
 4. [ ] **`app/layout.tsx` binding meta tag** — `metadata.other['ngf-public-api'] = 'https://app.ngfsystems.com/api/public/content'`. **Without a binding marker, the "NGF admin — set `site_url`" step below fails with a 422 and the site can never be attached to a client.** See "Binding markers".
 5. [ ] **`next.config.{js,ts}`** — add the CSP `frame-ancestors` header
-6. [ ] **`vercel.json`** — add the `ignoreCommand` so docs-only commits don't burn build credit (see "Vercel build cost discipline")
+6. [ ] **`vercel.json`** — `"ignoreCommand": "bash scripts/vercel-skip-docs.sh"`, with the synced script present and `*.sh text eol=lf` in `.gitattributes` (see "Vercel build cost discipline"). Never the inline `HEAD^` one-liner
 7. [ ] **Annotate every page** — wrap each editable element with all four `data-ngf-*` attributes (text, textarea, color, image) and use `data-ngf-group` on every list of cards
 8. [ ] **Always `||`, never `??`** for fallbacks
 9. [ ] **Vercel env vars** — `NEXT_PUBLIC_SITE_URL` (custom domain or vercel.app), optional `NGF_APP_URL`, `WEBSITE_REVALIDATION_SECRET` (same value as the NGF main app), plus your own (DB, Resend, Clerk if used)
@@ -1247,7 +1255,7 @@ node ../ngf-client-starter/scripts/ngf-doctor.mjs   # ad-hoc audit only — neve
 
 …but **never leave that form in `package.json`**. A relative path out of the repo resolves on the machine that wrote it and nowhere else — not on Vercel, not in a fresh clone, not in CI — so the launch gate silently cannot run in the only environment that matters. The doctor fails itself on this (`Doctor is self-contained`).
 
-It checks the mechanically-verifiable subset of this doc: content cache mode (including `force-dynamic` on a page that reads NGF content, which defeats ISR even when the fetch is correct), whether `/api/revalidate` actually calls `revalidatePath` **and fails closed**, bridge present *and mounted* **and actually the real bridge** (protocol handlers + size floor, so a stub can't pass), the presence of a portal **binding marker**, CSP + security headers, `sitemap`/`robots`/JSON-LD, **an async sitemap whenever the app has a dynamic `[slug]` route** (a static one can't enumerate those URLs, which hides them from Google *and* from the schema scraper), `vercel.json` `ignoreCommand`, `??`-instead-of-`||` fallbacks, and annotation correctness — every `data-ngf-field` carrying `label` + `section` (the scraper silently drops the rest), one `data-ngf-group` per list, group paths exactly two segments deep, and no `next/image`-with-`fill` on an annotated element.
+It checks the mechanically-verifiable subset of this doc: content cache mode (including `force-dynamic` on a page that reads NGF content, which defeats ISR even when the fetch is correct), whether `/api/revalidate` actually calls `revalidatePath` **and fails closed**, bridge present *and mounted* **and actually the real bridge** (protocol handlers + size floor, so a stub can't pass), the presence of a portal **binding marker**, CSP + security headers, `sitemap`/`robots`/JSON-LD, **an async sitemap whenever the app has a dynamic `[slug]` route** (a static one can't enumerate those URLs, which hides them from Google *and* from the schema scraper), `vercel.json` `ignoreCommand` (warning on the superseded inline `HEAD^` form, failing on a missing or CRLF skip script), `??`-instead-of-`||` fallbacks, and annotation correctness — every `data-ngf-field` carrying `label` + `section` (the scraper silently drops the rest), one `data-ngf-group` per list, group paths exactly two segments deep, and no `next/image`-with-`fill` on an annotated element.
 
 **A green doctor is necessary, not sufficient** — it cannot see whether the site is bound to the right client. That's the second check.
 
@@ -1396,21 +1404,7 @@ python3 github-push.py <repo-name> "feat: real summary"
 
 Every Vercel build burns build-minute credit. A repo with no ignore rule rebuilds on *every* push — including commits that only touch the README, docs, or other files that can't affect the deployed site. Ship a `vercel.json` with an `ignoreCommand` on day one so Vercel skips builds it doesn't need.
 
-**Minimum — skip docs-only commits.** Create `scripts/vercel-skip-docs.sh`:
-
-```bash
-#!/usr/bin/env bash
-# Vercel inverts the usual convention: exit 0 = SKIP build, exit 1 = BUILD.
-# Build only if something OTHER than markdown/docs changed.
-if git diff --quiet HEAD^ HEAD -- . ':(exclude)*.md' ':(exclude)docs/**'; then
-  echo "Only docs/markdown changed — skipping build."
-  exit 0
-fi
-echo "Source changed — building."
-exit 1
-```
-
-Wire it up in `vercel.json`:
+**Use the canonical script. Do not hand-roll this rule.** `scripts/vercel-skip-docs.sh` is a canonical file in the sync manifest — `npm run sync-ngf` writes it, `npm run sync-ngf:check` fails on drift — and `vercel.json` is exactly:
 
 ```json
 {
@@ -1419,22 +1413,28 @@ Wire it up in `vercel.json`:
 }
 ```
 
-The NGF main app itself uses the **inline** form below (with a longer exclude list) rather than the script — either is fine, but don't assume the script exists in a repo just because `vercel.json` references one.
+**Why a script and not the inline one-liner.** The obvious rule is `git diff --quiet HEAD^ HEAD -- ':(exclude)*.md'`, and it is wrong in a way that hides itself. It compares only the **last commit of a push** to its parent. Push three commits where the first changes code and the last fixes a typo in the README, and the rule sees a docs-only change and **cancels the entire build** — so the code never deploys and production silently keeps serving the previous build. Vercel reports the deployment as *Canceled*, not *Error*, so the dashboard looks healthy. This cost the main app a missing deploy on 2026-09-08.
 
-**Inline one-liner alternative** if you'd rather not add a script file:
+The script diffs from `VERCEL_GIT_PREVIOUS_SHA` — the commit actually deployed last — so it sees the whole push however many commits it contains.
 
-```json
-{
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ':(exclude)*.md'"
-}
+**The defensive parts of the script are load-bearing; don't simplify them.**
+
+- Vercel's clone is **shallow**, so the previously deployed commit is frequently not in the local history. `git diff` against a missing object exits 128, and Vercel treats any exit that is not 0 or 1 as a **failed deployment**. The script therefore checks the base exists, deepens the clone once, and if the base still cannot be resolved, **builds**.
+- It never falls back to `HEAD^` when a real previous SHA exists. That fallback looks harmless and quietly reinstates the last-commit-only bug.
+- Every git failure maps to exit 1 (build). **Skipping is the only outcome that has to be proven**; building is always the safe default. A wasted build costs credit, a wrongly skipped one costs a deploy nobody notices is missing.
+
+**The script MUST have LF line endings.** Vercel runs it with bash on Linux; a CRLF checkout fails on every line with `$'\r': command not found`, and because this script decides whether the site deploys at all, that breaks the whole pipeline. Every repo needs this in `.gitattributes`:
+
+```
+*.sh text eol=lf
 ```
 
 **Notes:**
 
 - The exit-code convention is backwards from intuition: **exit 0 skips the build, exit 1 runs it.** Get this wrong and you either never deploy or never skip.
-- On the first deploy there's no `HEAD^`; Vercel builds anyway. The ignore logic only kicks in on later commits.
+- On the very first deploy there is no previous SHA; the script builds. The skip logic only starts mattering on later pushes.
 - `ignoreCommand` is the right tool for *"skip builds that can't matter."* It is NOT the tool for *"this repo should never auto-deploy at all"* — for that, turn off the Git integration's production/preview deploys in the Vercel project settings (Settings → Git → Ignored Build Step / connected branch). Don't try to permanently disable deploys with an always-skip ignoreCommand.
+- `npm run doctor` warns while a repo is still on the inline `HEAD^` form, and fails outright if `vercel.json` names the script but the file is missing or has CRLF endings.
 
 ---
 
@@ -2388,7 +2388,7 @@ NGF main app additionally:
 | Published content takes up to 60s to appear on the live site | The site is caching correctly (`next: { revalidate: 60 }`) but the instant cache-bust isn't firing. Confirm `app/api/revalidate/route.ts` exists on the client site AND `WEBSITE_REVALIDATION_SECRET` matches the value on the NGF main app. With a matched secret, publishes appear sub-second; without it, you fall back to the 60s window |
 | `/api/revalidate` returns 401 when the portal publishes | `WEBSITE_REVALIDATION_SECRET` on the client site doesn't match the NGF main app's value (or isn't set). Set both to the same secret and redeploy the client site |
 | Neon CU-hours climbing fast for no obvious reason | A client site is still on `cache: 'no-store'` in `getNgfContent()` — every visitor pageview hits Neon. Migrate it to the tagged/revalidating fetch (see "Content caching & revalidation") |
-| Vercel rebuilds on every commit including README/docs edits | Missing or misconfigured `vercel.json` `ignoreCommand`. Add the docs-skip script (see "Vercel build cost discipline"). Remember the inverted convention: exit 0 skips, exit 1 builds |
+| Vercel rebuilds on every commit including README/docs edits | Missing or misconfigured `vercel.json` `ignoreCommand`. Add the synced `scripts/vercel-skip-docs.sh` (see "Vercel build cost discipline"). Remember the inverted convention: exit 0 skips, exit 1 builds |
 
 ---
 
@@ -2599,7 +2599,7 @@ Before deploying any new NGF client site:
 
 - [ ] Framework Preset: **Next.js** (Vercel usually detects)
 - [ ] Env vars set: `NEXT_PUBLIC_SITE_URL` matches NGF database, `NEXT_PUBLIC_GA_ID`, `WEBSITE_REVALIDATION_SECRET` (same value as NGF main app), plus whatever else the site needs (DB, Resend, Clerk)
-- [ ] `vercel.json` with `ignoreCommand` committed (docs-only commits skip the build)
+- [ ] `vercel.json` with `"ignoreCommand": "bash scripts/vercel-skip-docs.sh"` committed, script synced and LF (docs-only pushes skip the build)
 - [ ] `app/api/revalidate/route.ts` present (publishes bust the content cache instantly)
 - [ ] CSP `frame-ancestors` header in `next.config`
 - [ ] Custom domain DNS records configured at the registrar
