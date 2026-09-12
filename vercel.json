@@ -1,4 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "ignoreCommand": "bash scripts/vercel-skip-docs.sh"
+  "ignoreCommand": "bash \"$(git rev-parse --show-toplevel 2>/dev/null || echo .)/scripts/vercel-skip-docs.sh\""
 }

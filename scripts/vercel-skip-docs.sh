@@ -28,6 +28,22 @@
 # IMPORTANT: this file MUST have LF line endings (.gitattributes enforces it).
 # CRLF makes bash fail on every line and every deploy fails.
 
+# Work from the repository root, always.
+#
+# Vercel runs this from the project's Root Directory, which is NOT always the
+# repo root — a repo whose app lives in a subfolder runs it from there. The
+# pathspec below is `.`, which git reads relative to the CURRENT directory, so
+# from a subfolder this script would diff only that subtree, see nothing, and
+# SKIP a deploy that changed files above it. That is the original bug wearing a
+# different hat, and it is exactly what happened to WrenchTime-Cycles.
+#
+# The ignoreCommand in vercel.json resolves this file the same way, so the script
+# can be FOUND from a nested root; this makes it also LOOK at the right thing.
+cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)" || {
+  echo "vercel-skip-docs: cannot find the repo root — building to be safe"
+  exit 1
+}
+
 # No previous deployment to compare against — first deploy of a project, or a
 # trigger where Vercel does not set it. BUILD. The earlier version fell back to
 # HEAD^ here, which is the last-commit-only comparison this whole script exists

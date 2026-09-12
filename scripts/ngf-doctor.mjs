@@ -506,6 +506,25 @@ if (!vercelJson) {
     'vercel.json ignoreCommand',
     "scripts/vercel-skip-docs.sh exists but .gitattributes has no '*.sh text eol=lf' rule. Nothing stops a Windows commit storing it with CRLF, and Vercel's Linux bash then fails on every line — no deploys at all. Add the rule and re-commit the script.",
   )
+} else if (!/rev-parse --show-toplevel/.test(vercelJson)) {
+  // Vercel runs the ignore step from the project's Root Directory, which is not
+  // always the repo root — a repo whose app sits in a subfolder runs it there.
+  // A relative `bash scripts/…` path is then simply not found, bash exits 127,
+  // and Vercel reads a non-0/1 exit as a FAILED deployment, not as "build".
+  // WrenchTime-Cycles hit exactly this on 2026-09-12.
+  fail(
+    'vercel.json ignoreCommand',
+    'ignoreCommand resolves the script relative to the working directory. Vercel runs it from the project Root Directory, which may be a subfolder, and bash then exits 127 — which Vercel treats as a failed deployment. Use: bash "$(git rev-parse --show-toplevel 2>/dev/null || echo .)/scripts/vercel-skip-docs.sh"',
+  )
+} else if (skipScript && !/rev-parse --show-toplevel/.test(skipScript)) {
+  // Worse than not finding the script: finding it and asking it the wrong
+  // question. The diff pathspec is `.`, which git reads relative to the CURRENT
+  // directory, so from a subfolder the script examines only that subtree and
+  // skips a deploy that changed anything above it — silently, as Canceled.
+  fail(
+    'vercel.json ignoreCommand',
+    'scripts/vercel-skip-docs.sh does not cd to the repo root before diffing. Run from a subfolder it would see only that subtree and skip deploys for changes above it. Re-sync the script from the starter.',
+  )
 } else if (skipScript && /\r\n/.test(skipScript)) {
   // The rule exists, so the committed blob is LF and deploys are safe; this
   // copy just has not been re-checked-out. Only affects running it locally.
