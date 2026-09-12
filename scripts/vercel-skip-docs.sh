@@ -28,7 +28,17 @@
 # IMPORTANT: this file MUST have LF line endings (.gitattributes enforces it).
 # CRLF makes bash fail on every line and every deploy fails.
 
-base="${VERCEL_GIT_PREVIOUS_SHA:-HEAD^}"
+# No previous deployment to compare against — first deploy of a project, or a
+# trigger where Vercel does not set it. BUILD. The earlier version fell back to
+# HEAD^ here, which is the last-commit-only comparison this whole script exists
+# to replace: a first deploy whose final commit was docs-only would have been
+# skipped, leaving the project with no production deployment at all.
+if [ -z "${VERCEL_GIT_PREVIOUS_SHA:-}" ]; then
+  echo "vercel-skip-docs: no previous deployment to compare against — building"
+  exit 1
+fi
+
+base="$VERCEL_GIT_PREVIOUS_SHA"
 
 if ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
   git fetch -q --depth=100 origin main 2>/dev/null || true
