@@ -90,6 +90,46 @@ for (const f of FILES) {
   }
 }
 
+// ── 1b. Next.js is a patched release ───────────────────────────────────────
+// CVE-2026-44575 (GHSA-267c-6grr-h53f) is a middleware/proxy bypass in every
+// App Router release before 15.5.16 and 16.2.5. A site pinned to an older
+// minor is not "stable", it is unpatched: upstream fixes only the newest minor
+// of each supported major, so 15.3.x and 16.1.x never received it. On
+// 2026-09-13 ten of eleven NGF sites were on one of those. The floors below are
+// the first patched release of each line — raise them when the next advisory
+// lands, never lower them.
+{
+  const NEXT_PATCHED_FLOOR = { 15: [15, 5, 16], 16: [16, 2, 5] }
+  const parse = (raw) => {
+    try { return JSON.parse(raw ?? '{}') } catch { return {} }
+  }
+  const declared = (parse(read('package.json')).dependencies ?? {}).next ?? ''
+  // Prefer what is actually locked: a caret range in package.json says
+  // nothing about what npm ci installs.
+  const locked = ((parse(read('package-lock.json')).packages ?? {})['node_modules/next'] ?? {}).version ?? ''
+  const raw = locked || declared
+  const m = /(\d+)\.(\d+)\.(\d+)/.exec(raw)
+  if (!m) {
+    warn('Next.js is a patched release', 'Could not read a Next.js version from package.json or package-lock.json.')
+  } else {
+    const v = [Number(m[1]), Number(m[2]), Number(m[3])]
+    const shown = `next ${v.join('.')} (${locked ? 'locked' : 'declared'})`
+    const floor = NEXT_PATCHED_FLOOR[v[0]]
+    const below = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]
+    if (!floor) {
+      fail('Next.js is a patched release', `${shown} — only Next 15 and 16 are on the standards list; ${v[0] < 15 ? 'this major no longer receives security fixes.' : 'add this major to the doctor before adopting it.'}`)
+    } else if (below(v, floor) < 0) {
+      fail(
+        'Next.js is a patched release',
+        `${shown} is below ${floor.join('.')}, the first release of the ${v[0]}.x line with the fix for CVE-2026-44575 ` +
+          `(middleware bypass). Bump to the latest patch of ${floor[0]}.${floor[1]}.x or newer, regenerate the lockfile, redeploy.`,
+      )
+    } else {
+      ok('Next.js is a patched release', shown)
+    }
+  }
+}
+
 // ── 2. Instant publish (/api/revalidate) ─────────────────────────────────────
 const revPath = ['app/api/revalidate/route.ts', 'app/api/revalidate/route.js'].find(has)
 if (!revPath) {

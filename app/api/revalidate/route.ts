@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
 
 /**
- * GET /api/revalidate?secret=<WEBSITE_REVALIDATION_SECRET>
+ * GET /api/revalidate
+ *   x-ngf-revalidation-secret: <WEBSITE_REVALIDATION_SECRET>   (preferred)
+ *   ?secret=<WEBSITE_REVALIDATION_SECRET>                        (also accepted)
  *
  * Called by the NGF portal's push handler immediately after a client publishes.
  * Busts this site's content cache so the client sees their change right away
@@ -14,7 +16,9 @@ import { revalidatePath } from 'next/cache'
  * signature has shifted across Next versions and can silently no-op.
  */
 export async function GET(req: NextRequest) {
-  const secret = req.nextUrl.searchParams.get('secret')
+  // The portal sends the secret both ways. Prefer the header: a query string
+  // ends up in request logs and browser history, a header usually does not.
+  const secret = req.headers.get('x-ngf-revalidation-secret') ?? req.nextUrl.searchParams.get('secret')
   const expected = process.env.WEBSITE_REVALIDATION_SECRET
 
   // Fail closed: if no secret is configured on this site, refuse rather than
