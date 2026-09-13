@@ -32,7 +32,7 @@ That doc has:
 - [ ] Update `app/layout.tsx` `metadata` with the client's business name
 - [ ] Set `NEXT_PUBLIC_SITE_URL` in Vercel env vars to the client's domain
 - [ ] Set `NGF_APP_URL` (optional — defaults to `https://app.ngfsystems.com`)
-- [ ] Set `WEBSITE_REVALIDATION_SECRET` (must match the value in the NGF app)
+- [ ] Set `WEBSITE_REVALIDATION_SECRET` — mint it on the client's hub (Website → Advanced) and set it on the Vercel project for **production AND preview**, then redeploy; the hub's **Verify publish** proves it landed
 - [ ] Customize brand colors in `app/globals.css` CSS variables
 - [ ] In the NGF admin portal, set this client's `site_url` field to match `NEXT_PUBLIC_SITE_URL` exactly (case, www, trailing slash all normalized)
 - [ ] Deploy to Vercel
@@ -48,7 +48,7 @@ That doc has:
 | `components/NgfEditBridge.tsx` | Bridge between the iframe-embedded site and the portal editor. **Never hand-edit, and never copy it from a client site** — run `npm run sync-ngf`. It exports `NGF_BRIDGE_VERSION`; `npm run doctor` reads it and `npm run sync-ngf:check` fails on drift. THIS repo is the canonical source. |
 | `app/layout.tsx` | Mounts `<NgfEditBridge />` and calls `getNgfContent()` once per page load |
 | `next.config.ts` | CSP `frame-ancestors` header so the portal editor can iframe the site |
-| `app/api/revalidate/route.ts` | Optional webhook the NGF portal pings after publish (uses `WEBSITE_REVALIDATION_SECRET`) |
+| `app/api/revalidate/route.ts` | **Required.** The portal pings it after every publish, reset and revert. Missing, or `WEBSITE_REVALIDATION_SECRET` unset, and the hub shows the client as degraded while content waits out the 60s cache window |
 
 ---
 

@@ -1,8 +1,18 @@
 # NGFsystems — Universal Project Standards
 
-<!-- ngf-standards-version: 2.9.0 -->
-**Version 2.9.0 · last updated 2026-09-09.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
+<!-- ngf-standards-version: 2.10.0 -->
+**Version 2.10.0 · last updated 2026-09-13.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
 
+> **2.10.0** — **ten of eleven sites were on an unpatched Next.js.** Six pinned `15.3.8` (the
+> starter included) and four on `16.1.6`, every one inside the range of CVE-2026-44575, a
+> middleware bypass fixed only in `15.5.16` and `16.2.5`. "Latest (16.x is fine)" was too loose
+> a rule to catch it. The framework row now names the patched floors, the starter pins the
+> latest 15.5.x, and `npm run doctor` fails below the floor. Same release: the
+> `/api/revalidate` contract is written down as the route actually behaves — 503 when the site
+> has no secret, 401 when it has the wrong one, and the hub reads those two differently — the
+> route now reads the secret from the `x-ngf-revalidation-secret` header first, and the secret
+> is per client (minted on the hub), not one value shared with the app.
+>
 > **2.9.0** — **the deploy-skip rule was silently cancelling real deploys.** The inline
 > `git diff HEAD^ HEAD` ignoreCommand every repo shipped with compares only the LAST commit of a
 > push, so a push ending in a docs-only commit cancelled the whole build and the site kept serving
@@ -261,7 +271,7 @@ Two things to know before you take "latest stable" literally:
 
 | Layer | Tool | Notes |
 |---|---|---|
-| Framework | Next.js App Router | latest (16.x is fine; some sites still on 15.x) |
+| Framework | Next.js App Router | a **patched** release: `15.5.16`+ or `16.2.5`+. CVE-2026-44575 is a middleware bypass in everything older, and upstream never back-ports to an old minor, so `15.3.x` and `16.1.x` are unpatched however "stable" they feel. The starter pins the latest `15.5.x`; `16.x` is fine for a new site. `npm run doctor` fails below the floor |
 | Runtime | React | matches Next.js (18 or 19) |
 | Language | TypeScript | always, never plain JS |
 | Styling | Tailwind CSS | latest (3 or 4) |
@@ -510,31 +520,42 @@ Pages serve from cache and refresh at most once per 60 seconds. Neon sees roughl
 **Layer 2 — `/api/revalidate` endpoint on every client site** — busts the cache the instant a client clicks "Push to Website" so they never wait out the 60s window to see their own change:
 
 ```typescript
-// app/api/revalidate/route.ts
+// app/api/revalidate/route.ts — a synced canonical file; shown so the CONTRACT is visible.
 import { NextRequest, NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
 
 export async function GET(req: NextRequest) {
-  if (req.nextUrl.searchParams.get('secret') !== process.env.WEBSITE_REVALIDATION_SECRET) {
-    return NextResponse.json({ ok: false }, { status: 401 })
+  // The portal sends the secret both ways. Prefer the header: a query string
+  // ends up in request logs, a header usually does not.
+  const secret = req.headers.get('x-ngf-revalidation-secret') ?? req.nextUrl.searchParams.get('secret')
+  const expected = process.env.WEBSITE_REVALIDATION_SECRET
+  // Fail CLOSED, and say which way: 503 when the site holds no secret at all,
+  // 401 when it holds one that does not match. The hub reads the two differently
+  // (below), so a route that answers 401 for both misreports the client.
+  if (!expected) {
+    return NextResponse.json({ error: 'WEBSITE_REVALIDATION_SECRET is not set on this site' }, { status: 503 })
+  }
+  if (secret !== expected) {
+    return NextResponse.json({ error: 'Invalid secret' }, { status: 401 })
   }
   // Version-agnostic: revalidatePath('/', 'layout') busts every page under the
   // root layout, so all pages calling getNgfContent() rebuild on next request.
   revalidatePath('/', 'layout')
-  return NextResponse.json({ ok: true, revalidated: true })
+  return NextResponse.json({ ok: true, revalidated: true, at: new Date().toISOString() })
 }
 ```
 
 > **Why `revalidatePath('/', 'layout')` and not `revalidateTag`?** The tagged fetch in `lib/ngf.ts` still tags content `'ngf-content'`, but `revalidateTag`'s signature has shifted across Next versions (newer Next expects a second argument), so a bare `revalidateTag('ngf-content')` can silently no-op or throw depending on the version a site is on. `revalidatePath('/', 'layout')` is stable across Next 14/15/16 and busts exactly the pages that read NGF content. Use it as the default.
 
-**Shared secret** — set `WEBSITE_REVALIDATION_SECRET` on the client site's Vercel project to the **same value** as `WEBSITE_REVALIDATION_SECRET` on the NGF main app. The NGF push handler (`app/api/portal/website/push/route.ts`) reads its own copy and calls `https://<site_url>/api/revalidate?secret=<secret>` on every publish. Mismatched secrets → the endpoint 401s and the site falls back to the 60s window (still correct, just not instant).
+**The secret is per client.** The hub mints it (Website → Advanced → mint, or the Hosting card's **Set up instant publish**, which also writes it to the linked Vercel project). Set it on the site's Vercel project as `WEBSITE_REVALIDATION_SECRET` on **production AND preview**, then redeploy — an env var only reaches a build that starts after it is set. The portal sends that client's own secret on every publish, reset and revert (`revalidateClientSite` in `lib/revalidate-ping.ts` of the main app), both as the `x-ngf-revalidation-secret` header and as `?secret=`, follows a redirect only to the same host (apex↔www), and records a **receipt** when the site answers 2xx. The hub's **Verify publish** button makes the same call on demand; until it has succeeded once, the hub reads the client as *unverified* however correctly the secret was pasted. A single app-wide secret used to be shared with every site; it survives only as a transitional fallback for clients with no secret of their own, and is scheduled for deletion on 2026-10-01.
 
 **How the two layers combine:**
 
 | Scenario | What happens |
 |---|---|
 | Client publishes via portal | Push handler pings `/api/revalidate` → `revalidatePath('/', 'layout')` → next request rebuilds from fresh content. Sub-second. |
-| `WEBSITE_REVALIDATION_SECRET` unset or mismatched | No ping (or 401). Content still refreshes within 60s via ISR. |
+| `WEBSITE_REVALIDATION_SECRET` unset on the site | The route answers **503**. No cache bust; content still refreshes within 60s via ISR. The hub shows the client as *degraded* — "Instant publish broken" — until the secret is set and the site redeployed. |
+| `WEBSITE_REVALIDATION_SECRET` set but different from the client's secret in the hub | The route answers **401**. Same 60s fallback. The hub shows *unverified* (a 401 proves the site holds *a* secret, not the right one) until **Verify publish** gets a 2xx, or a publish does. |
 | Normal visitor traffic | Served from the ISR cache. Neon hit at most once per 60s per page. |
 
 This is the single highest-leverage change for Neon cost: a busy client site drops from one Neon query per pageview to one per minute per page.
