@@ -747,6 +747,23 @@ badDepth.length
   ? fail('Group paths are 2 segments', `${badDepth.join(', ')} — add/remove/reorder controls silently no-op unless the path is exactly section.array.`)
   : ok('Group paths are 2 segments')
 
+// A card list whose item fields are ALL images is a photo set annotated the old
+// way: one popover per photo, no cover, and the client cannot add several at
+// once. Standards 2.12.0 retired that pattern — the container is ONE `gallery`
+// field, and the editor's Photos sheet manages the whole set.
+const imageOnlyLists = []
+for (const f of MARKUP_FILES) {
+  for (const m of f.src.matchAll(/data-ngf-item-fields=(?:'(\[[^']*\])'|"(\[[^"]*\])"|\{`(\[[^`]*\])`\})/g)) {
+    let fields
+    try { fields = JSON.parse(m[1] ?? m[2] ?? m[3]) } catch { continue }
+    if (!Array.isArray(fields) || fields.length === 0) continue
+    if (fields.every((x) => x && x.type === 'image')) imageOnlyLists.push(`${f.path} (${fields.map((x) => x.key).join(', ')})`)
+  }
+}
+imageOnlyLists.length
+  ? warn('Photo sets are gallery fields', `${imageOnlyLists.join('; ')} — a card list made only of images is a photo set. Annotate the container once as data-ngf-type="gallery" and read it with getGalleryPhotos(); the client then gets the Photos sheet (multi-upload, reorder, crop, cover). See NGF-STANDARDS "Photo collections".`)
+  : ok('Photo sets are gallery fields')
+
 // next/image with fill on an annotated element — bridge can't reach the <img>.
 for (const f of FILES) {
   if (/<Image[^>]*\bfill\b[^>]*data-ngf-field/s.test(f.src) || /<Image[^>]*data-ngf-field[^>]*\bfill\b/s.test(f.src)) {

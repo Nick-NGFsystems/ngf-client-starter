@@ -1,8 +1,19 @@
 # NGFsystems — Universal Project Standards
 
-<!-- ngf-standards-version: 2.11.1 -->
-**Version 2.11.1 · last updated 2026-09-17.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
+<!-- ngf-standards-version: 2.12.0 -->
+**Version 2.12.0 · last updated 2026-09-17.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
 
+> **2.12.0** — **one photo-collection model: the `gallery` field, now with a description and a cover
+> per photo.** The wire format grows from bare URLs to `{ src, alt?, cover? }` entries; a plain photo
+> is still a bare string, so nothing already published changes. The editor's **Photos** sheet shows a
+> collection as a grid with multi-file upload or drop, reorder by drag or arrows, a description per
+> photo, crop, replace, remove and **Set as cover**. Bridge **1.3.0** repaints alt text and marks the
+> cover tile (`data-ngf-cover="true"`, outlined in edit mode); `lib/ngf.ts` gains `getGalleryPhotos()`
+> and `getCover()`. Rule: a carousel, grid, lightbox or listing's photo set is annotated ONCE, on its
+> container, as a `gallery` — never as a card list of `image` fields (the "Large galleries" pattern is
+> retired and the doctor warns on it) and never as a group inside a group. Every slide must be in the
+> server-rendered HTML. See "Photo collections".
+>
 > **2.11.1** — **bridge 1.2.2: phone and email links open the editor, and only the NGF portal can
 > drive the bridge.** A `tel:`, `mailto:` or `sms:` link got the same "Go to page" popup as a real
 > page, and the preview iframe then tried to navigate to `tel:…`, which does nothing — a button that
@@ -416,7 +427,7 @@ scripts/ngf-doctor.mjs ← conformance checker; `npm run doctor` must exit 0
 > that file, update this block in the same commit — a stale copy here means every site
 > built from this doc is subtly wrong. (It has happened twice: this block once omitted
 > `ngfEndpoints()`, which `LeadForm` and `BookingWidget` both import, and then omitted
-> `getGallery()`, which the "Large galleries" section tells you to call — either way a site
+> `getGallery()`, which the "Photo collections" section tells you to call — either way a site
 > built by following the doc literally would not compile.)
 
 ```typescript
@@ -922,7 +933,7 @@ Do **not** try to merge a published array back over the defaults per-index (`con
 | `color` | color picker + hex text | `el.textContent` |
 | `image` | URL field + Upload-from-computer + preview | `el.setAttribute('src', …)` |
 | `toggle` | a real `role="switch"` control | inline `display` on the annotated element |
-| `gallery` | thumbnail list, reorder/remove, **multi-file upload** | rebuilds the container's children |
+| `gallery` | the **Photos sheet**: thumbnail grid, multi-file upload or drop, drag or arrow reorder, a description per photo, crop, replace, remove, **Set as cover** | rebuilds the container's children; repaints `alt`; marks the cover tile `data-ngf-cover` |
 
 **`toggle`** — annotate the *section wrapper*. Always render the element and hide it with
 `style={{ display: 'none' }}`; never `{cond && <section>}`, because an unrendered section is invisible
@@ -979,147 +990,95 @@ A server component importing a plain value from a `'use client'` file receives a
 not the value — so `MY_KEYS.map(...)` throws *"map is not a function"* at prerender, not at typecheck.
 Put constants shared across the boundary in their own neutral module (`lib/…`) and import from there.
 
-### `gallery` — an ordered list of images in ONE field
+### Photo collections — the `gallery` field (carousels, grids, lightboxes, photo sets)
 
-**Use this whenever one item needs MULTIPLE photos.** A `data-ngf-group` path must be exactly two
-segments and item sub-fields are flat scalars, so `products.items.0.photos.0` **cannot be expressed** —
-a per-item image *list* is impossible as a group. Two client sites hit that wall independently and both
-worked around it by hardcoding the extra photos, leaving them permanently uneditable. The `gallery` type
-encodes the list as JSON inside a single scalar, so it declares like any other sub-field.
+**One rule: a collection of photos is ONE field, annotated once, on its container.** Whatever the
+site does with the photos — a carousel, a grid, a lightbox, a listing's photo set — the client manages
+them in one place, the editor's **Photos** sheet: every photo as a thumbnail, multi-file upload or drop,
+reorder by drag or arrows, a description (alt text) per photo, crop, replace, remove, and **Set as
+cover** for the one photo the site shows where only one fits.
 
-Annotate the **container**, not the images, and give it **exactly one child per photo** — the bridge
-grows the list by cloning the last child, so headings and "load more" buttons must stay outside it:
+Why a field and not a card list: a `data-ngf-group` path must be exactly two segments and item
+sub-fields are flat scalars, so `products.items.0.photos.0` **cannot be expressed** — a per-item photo
+list is impossible as a group. Two client sites hit that wall and hardcoded the extra photos, leaving
+them permanently uneditable. The gallery type encodes the list as JSON inside one scalar, so it
+declares like any other sub-field, on its own or inside a group.
 
 ```tsx
-const photos = getGallery(content, `products.items.${i}.photos`, product.images)
+import { getGalleryPhotos, getCover } from '@/lib/ngf'
+
+const photos = getGalleryPhotos(content, `homes.items.${i}.photos`, home.photos)
 
 <div
-  data-ngf-field={`products.items.${i}.photos`}
+  data-ngf-field={`homes.items.${i}.photos`}
   data-ngf-label="Photos"
   data-ngf-type="gallery"
-  data-ngf-section="Products"
+  data-ngf-section="Homes"
+  data-ngf-aspect="3:2"
 >
-  {photos.map((src, n) => (
-    <div key={n}><img src={src} alt="" /></div>
+  {photos.map((p, n) => (
+    <div key={n}><img src={p.src} alt={p.alt} /></div>
   ))}
 </div>
+
+// Where only one photo fits — the listing card, a share image:
+<img src={getCover(content, `homes.items.${i}.photos`, home.photos[0])} alt={home.name} />
 ```
 
-Declared inside a repeatable group like any other sub-field:
+Inside a repeatable group, declare it like any sub-field:
 
 ```
-data-ngf-item-fields='[{"key":"photos","label":"Photos","type":"gallery"},{"key":"name","label":"Name","type":"text"}]'
+data-ngf-item-fields='[{"key":"photos","label":"Photos","type":"gallery","aspect":"3:2"},{"key":"name","label":"Name","type":"text"}]'
 ```
 
 | | |
 |---|---|
-| Stored as | JSON array of URLs — `["/a.jpg","/b.jpg"]`. An empty list stores `''`, not `'[]'`, so a cleared gallery falls back to the hardcoded default like every other field. |
-| Read with | `getGallery(content, key, fallback)` from `lib/ngf.ts`. Never throws; returns `fallback` for missing, empty or malformed values. |
-| Upload | **Multi-file** — select many photos at once. Uploads run sequentially so the chosen order survives, and commit incrementally so a mid-way failure keeps what already succeeded. |
-| Cap | 60 images per gallery. |
+| Stored as | JSON array. A plain photo is a bare URL string; a photo with a description or the cover flag is an object — `["/a.jpg",{"src":"/b.jpg","alt":"Back deck","cover":true}]`. Content published as bare URLs reads back unchanged. An empty list stores `''`, not `'[]'`, so a cleared gallery falls back to the hardcoded default like every other field. |
+| Read with | `getGalleryPhotos(content, key, fallback)` → `{ src, alt, cover }[]` with exactly one `cover: true` (the client's pick, else the first). `getCover(content, key, fallbackUrl)` for the one photo. `getGallery()` still returns the URLs alone. All in `lib/ngf.ts`; none throws. |
+| Container | Exactly one direct child per photo; the photo is the first `<img>` inside that child. Headings, arrows and "load more" buttons stay outside. The bridge grows the list by cloning the last child, so the last child must be a complete tile. |
+| Description | Render `p.alt` on every `<img>`. It lives on the photo entry, not in a `<field>_alt` companion, because photos move and the text moves with them. |
+| Cover | The bridge marks the cover tile `data-ngf-cover="true"` and outlines it in edit mode. Use `getCover()` wherever the site shows one photo for the set — never a separate `image` field for it, or the client has two places to change one thing. |
+| Aspect | `data-ngf-aspect` on the container locks the cropper for new, replaced and re-cropped photos. |
+| Upload | Multi-file, sequential so the chosen order survives, committed incrementally so a mid-way failure keeps what already succeeded. |
+| Cap | 60 photos per gallery. |
+| Bridge | 1.3.0 or later for description and cover; 1.2.x shows the photos and ignores both. |
 
-**Do NOT** use a repeatable group for a per-item gallery, and do not fall back to annotating only the
-first image — that is exactly the pattern this type exists to replace.
+**Carousels and sliders.** Every slide must be in the server-rendered HTML — one child per photo, no
+virtualised or lazily mounted slides — or the editor cannot see them. Inactive slides may be hidden for
+visitors; reveal them in edit mode with the site's own CSS (see "Edit-mode visibility is the SITE's
+job"): `html[data-ngf-edit='true'] .slide { display: block; position: static; opacity: 1 }`. The
+client edits the whole set in the Photos sheet, so the carousel's arrows need no annotation.
 
-#### Large galleries (10+ photos in one place)
+**Do NOT**
 
-For project portfolios, property listing photo sets, before-and-after collections, or any "lots of photos in one container" pattern, use the same repeatable-group annotation system above with three adjustments.
+- annotate a photo set as a card list of `image` fields (the retired "Large galleries" pattern,
+  `gallery.items.N.image`). It gives the client one popover per photo and no cover, and the doctor
+  warns on a card list whose fields are only images. Migrate it (below).
+- nest a `data-ngf-group` inside another group's card for the photos — cloning the outer card
+  duplicates the whole inner gallery.
+- annotate only the first image of a set, or a `next/image` with `fill` — the bridge needs a plain
+  `<img>` in each tile.
+- add a caption field unless the design shows captions; the description is already there for every
+  photo.
 
-**Hard requirements — without these, in-preview delete and drag-reorder will silently no-op:**
-
-- **Group path must be exactly two segments deep** (e.g. `gallery.items`, `properties.photos`, `project.gallery`). The editor's removeGroupItem/moveGroupItem functions expect `section.arrayKey` shape — nested-deeper paths like `projects.0.gallery` are not supported and the X / drag controls will fail silently. If you need a per-project gallery, use a flat naming convention like `projectAGallery.items`, `projectBGallery.items`.
-- **The container element MUST carry `data-ngf-group="<section>.<array>"`** with that exact 2-segment path. Without the wrapper, the bridge's `getGroupContext()` returns null and individual photos can be edited but NOT deleted or reordered.
-- **Each photo's `data-ngf-field` MUST follow the indexed pattern** `<section>.<array>.<i>.<subfield>` — e.g. `gallery.items.0.image`, `gallery.items.1.image`. Anything else and the index parsing fails.
-
-1. **Bump `data-ngf-max-items`** to reflect realistic ceiling (50 or 100 for galleries)
-2. **Keep item-fields minimal** — usually just `{key: "image", type: "image", aspect: "..."}` plus optional caption. Don't add unnecessary fields per photo; each extra sub-field doubles the sidebar height per item.
-3. **Wrap the rendered grid in `<PhotoProvider>`** from `react-photo-view` (see "Universal interaction patterns") so visitors can click any photo to open a fullscreen swipeable lightbox.
-
-**Annotation pattern:**
-
-```tsx
-import { PhotoProvider, PhotoView } from 'react-photo-view'
-
-<section>
-  <PhotoProvider>
-    <div
-      data-ngf-group="project.gallery"
-      data-ngf-item-label="Photo"
-      data-ngf-min-items="0"
-      data-ngf-max-items="50"
-      data-ngf-item-fields='[{"key":"image","label":"Photo","type":"image","aspect":"3:2"},{"key":"caption","label":"Caption (optional)","type":"text"}]'
-      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
-    >
-      {photos.map((p, i) => (
-        <PhotoView
-          key={i}
-          src={content[`project.gallery.${i}.image`] || p.fallbackSrc}
-        >
-          <img
-            src={content[`project.gallery.${i}.image`] || p.fallbackSrc}
-            alt={content[`project.gallery.${i}.image_alt`] || p.alt}
-            data-ngf-field={`project.gallery.${i}.image`}
-            data-ngf-label="Photo"
-            data-ngf-type="image"
-            data-ngf-section="Project Gallery"
-            data-ngf-aspect="3:2"
-            className="w-full h-auto object-cover rounded-lg cursor-zoom-in"
-          />
-        </PhotoView>
-      ))}
-    </div>
-  </PhotoProvider>
-</section>
-```
-
-**What the client gets, in plain language:**
-
-- **Visitors** see a tidy grid; click any photo → fullscreen modal with prev/next arrows, swipe on mobile, pinch-zoom, and pan. Captions display below each image if you've set them.
-- **Clients editing** see every photo with the permanent "Replace photo" overlay button. Click on any individual photo in the live preview → cropper opens → upload replacement → alt text inline → done. They never have to scroll the sidebar to swap a photo.
-- **Adding a new photo:** sidebar "+ Add Photo" button at the bottom of the gallery group adds an empty slot. Then click it in the preview or sidebar to upload.
-- **Reordering:** sidebar has ↑↓ arrows on each card.
-- **Deleting:** × button on each card in the sidebar.
-
-**What's polished today** (all built into the bridge — no per-site work):
-
-- **Replace any photo** by clicking the dark "Replace photo" button in its top-right corner
-- **Delete any photo** in the gallery by clicking the red X in its top-left corner — confirms, then removes the card and re-indexes the rest
-- **Reorder photos** by dragging one image onto another within the same gallery — the dragged image dims, the drop target gets a blue ring, drop swaps in the new order
-
-**Remaining UX rough edge at 30+ photos:**
-
-- One photo upload at a time — no bulk drag-and-drop-30-files-at-once (yet)
-
-That's tolerable for "swap a few photos occasionally" workflows. It gets painful for "upload an entire 30-photo gallery from scratch in one session." The first time a client actually hits this wall, build bulk multi-file upload. Until then, set client expectations: "to add many photos at once, expect to do it one at a time — takes maybe a minute per photo."
-
-**Mobile note:** drag-to-reorder uses the HTML5 drag API which doesn't fire on touchscreens, and the editor has no sidebar below 768 px, so on a phone a client can replace and delete photos but **cannot reorder a card list at all** today. (The `gallery` field type's own popover has ↑↓ arrows and does work on a phone.) Tell clients to reorder from a laptop until the editor's photo sheet ships.
-
-**Things to avoid in large gallery annotations:**
-
-- **Don't add captions as a required field** unless they're genuinely needed — most clients won't fill them in and the empty captions clutter the design. Mark them optional and only render if non-empty.
-- **Don't omit `data-ngf-aspect`** — without it, clients upload portrait phone photos into landscape grid slots and the layout breaks. Lock the aspect to match the design.
-- **Don't use `next/image` with `fill`** — same rule as everywhere else; bridge can't read/write through the wrapper. Plain `<img>`.
-- **Don't annotate the `<PhotoView>` wrapper** — annotate only the `<img>` inside it. The bridge needs the actual image element for src updates.
-- **Don't nest the group path deeper than 2 segments** — `project.gallery` works, `projects.0.gallery` will silently break the delete + drag controls.
+**Migrating a card-list gallery** (`gallery.items.N.image` → one `gallery` field): render the
+container from `getGalleryPhotos()` with the old hardcoded list as the fallback, delete the group
+attributes and the per-image `data-ngf-field`s, and put `data-ngf-field` / `data-ngf-type="gallery"` on
+the container. Content published under the old keys is ignored from then on: the client re-adds the
+photos through the Photos sheet, or NGF copies the values over by hand for a site with many.
 
 ### Detail pages for group items (`/thing/[slug]`)
 
 A portfolio, property list or team roster usually wants a page per item, not just a grid. The group lives
 on the index page; the detail page renders the *same* item's fields on their own route.
 
-**Per-item galleries: use numbered slots, not a nested group.** The two-segment rule above means a
-per-item gallery cannot be a group — `projects.0.photos` breaks the editor controls. Where the item count
-is fixed and small, the doc's `projectAGallery.items` naming works; where the collection is **dynamic**
-(the client adds and removes projects), it doesn't scale, because each project would need its own named
-group. Use a fixed number of flat slots on the item instead and declare them in `data-ngf-item-fields`:
-
-```ts
-{ key: 'photo1', label: 'Gallery Photo 1', type: 'image' },
-{ key: 'photo2', label: 'Gallery Photo 2', type: 'image' },
-// …a sane cap, e.g. 4–6
-```
-
-Render every slot even when empty so the client can fill them; hide the empty ones visually (see below).
+**Per-item photo sets: one `gallery` sub-field, never a nested group and never numbered slots.** The
+two-segment rule means a per-item gallery cannot be a group — `projects.0.photos` breaks the editor
+controls — and a fixed row of `photo1 … photo6` image fields gives the client six popovers, a hard cap
+and no cover. Declare `{ "key": "photos", "type": "gallery" }` in `data-ngf-item-fields`, render the
+item's container with `getGalleryPhotos()` and its card thumbnail with `getCover()` (see "Photo
+collections"). The client then manages the whole set in the Photos sheet, on the detail page or from
+the card.
 
 **Derive slugs from a field, and keep index and slug in one resolver.** The grid and the detail page must
 never disagree about which item is which. Put the resolution in `lib/<thing>.ts` and have both import it:
@@ -2612,7 +2571,7 @@ Map the request to a known pattern. Almost every ask is one of these:
 |---|---|---|
 | To edit some text/image themselves | Editable field — `data-ngf-*` annotation + `||` fallback | "Self-describing markup" |
 | A list they can add/remove/reorder (services, team, projects) | Repeatable group — `data-ngf-group` | "Repeatable groups" |
-| A photo gallery / many images | Repeatable group + `react-photo-view` lightbox | "Large galleries", "Universal interaction patterns" |
+| A photo gallery, carousel or many images | One `gallery` field on the container (+ `react-photo-view` lightbox for visitors) | "Photo collections", "Universal interaction patterns" |
 | A contact / inquiry form | Server route + Resend + Zod validation | Recipes below |
 | A booking calendar / appointments | **Native booking module** (`feature_booking`) — integrate the built feature, never rebuild | "Booking / appointments" |
 | Quote requests / custom request flows | Its own DB table + tokenized public links | Recipes below |
@@ -2639,7 +2598,7 @@ If the ask fits no pattern, stop and design it against the four principles (edit
 
 **Editable content region.** Annotate the element with all four attributes; read `content['section.field'] || 'fallback'`. One canonical path per piece of data, reused everywhere it appears. See "Self-describing markup."
 
-**Repeatable list / gallery.** `data-ngf-group="section.items"` on the container — exactly two path segments, declared once (not on both responsive layouts). Declare `data-ngf-item-fields`, render with indexed paths, read with `getItems(content, 'section.items')`. Wrap image sets in `<PhotoProvider>`. See "Repeatable groups" and "Large galleries."
+**Repeatable list.** `data-ngf-group="section.items"` on the container — exactly two path segments, declared once (not on both responsive layouts). Declare `data-ngf-item-fields`, render with indexed paths, read with `getItems(content, 'section.items')`. See "Repeatable groups." **Photo set.** One `gallery` field on the container, read with `getGalleryPhotos()` / `getCover()`; wrap in `<PhotoProvider>` for visitors. See "Photo collections."
 
 **Contact / inquiry form.** Use **`<LeadForm>`** from the starter, pointed at the central lead store. A new site has **no form API route and no Resend key of its own** — the store persists first, then sends the notification from the verified NGF sender, so a failed email can no longer lose the enquiry, and every submission shows up in the client's **Form Submissions** portal page.
 

@@ -12,7 +12,7 @@ import { useEffect } from 'react'
  * DO NOT hand-edit this file in a client site. Run `npm run sync-ngf` instead —
  * local edits are overwritten and the version then lies about what the code does.
  */
-export const NGF_BRIDGE_VERSION = '1.2.2'
+export const NGF_BRIDGE_VERSION = '1.3.0'
 
 /**
  * NgfEditBridge — enables the NGF portal's live preview and click-to-edit.
@@ -53,6 +53,13 @@ export default function NgfEditBridge() {
         position: relative;
         opacity: 0.5 !important;
         outline: 2px dashed #f59e0b !important;
+        outline-offset: -2px;
+      }
+      /* The cover photo of a gallery (bridge 1.3.0): outlined so the client can
+         see which one the site shows where only one fits. Outline, not a badge,
+         so a slide's own positioning is never disturbed. */
+      [data-ngf-edit="true"] [data-ngf-type="gallery"] > [data-ngf-cover="true"] {
+        outline: 2px solid #2563eb !important;
         outline-offset: -2px;
       }
       [data-ngf-edit="true"] [data-ngf-type="toggle"][data-ngf-hidden="true"]::after {
@@ -376,14 +383,24 @@ export default function NgfEditBridge() {
        * field type here.
        */
       function readGalleryState(container: HTMLElement): string {
-        const urls: string[] = []
+        // Gallery wire format v2 (bridge 1.3.0): a bare URL string for a plain
+        // photo, `{ src, alt?, cover? }` when the photo carries alt text or is
+        // the cover. Alt comes from the tile's <img alt>; the cover is the tile
+        // marked data-ngf-cover (which applyGalleryState sets). At most one.
+        const entries: Array<string | { src: string; alt?: string; cover?: boolean }> = []
+        let coverSeen = false
         Array.from(container.children).forEach(child => {
           const el = child as HTMLElement
           const img = (el.tagName === 'IMG' ? el : el.querySelector('img')) as HTMLImageElement | null
           const src = img?.getAttribute('src')?.trim()
-          if (src) urls.push(src)
+          if (!src) return
+          const alt = img?.getAttribute('alt')?.trim() ?? ''
+          const cover = el.getAttribute('data-ngf-cover') === 'true' && !coverSeen
+          if (cover) coverSeen = true
+          if (!alt && !cover) entries.push(src)
+          else entries.push({ src, ...(alt ? { alt } : {}), ...(cover ? { cover: true } : {}) })
         })
-        return urls.length ? JSON.stringify(urls) : ''
+        return entries.length ? JSON.stringify(entries) : ''
       }
 
     /**
@@ -408,18 +425,36 @@ export default function NgfEditBridge() {
         return
       }
 
-      let urls: string[] = []
+      // Wire format v2: a bare URL, or { src, alt?, cover? }. A string entry is
+      // a plain photo; a v1 bridge reading a v2 value sees only the src, which
+      // is the intended degradation.
+      type GalleryEntry = { src: string; alt?: string; cover?: boolean }
+      let photos: GalleryEntry[] = []
       try {
         const parsed = JSON.parse(raw)
         if (Array.isArray(parsed)) {
-          urls = parsed
-            .map(e => (typeof e === 'string' ? e : e && typeof e === 'object' ? (e as { src?: string }).src : null))
-            .filter((u): u is string => typeof u === 'string' && u.trim() !== '')
+          let coverSeen = false
+          for (const e of parsed) {
+            if (typeof e === 'string') {
+              if (e.trim()) photos.push({ src: e.trim() })
+              continue
+            }
+            if (!e || typeof e !== 'object') continue
+            const o = e as { src?: unknown; alt?: unknown; cover?: unknown }
+            if (typeof o.src !== 'string' || !o.src.trim()) continue
+            const cover = o.cover === true && !coverSeen
+            if (cover) coverSeen = true
+            photos.push({
+              src: o.src.trim(),
+              ...(typeof o.alt === 'string' ? { alt: o.alt } : {}),
+              ...(cover ? { cover: true } : {}),
+            })
+          }
         }
       } catch {
         return // Malformed mid-edit: leave the DOM alone rather than blanking it.
       }
-      if (urls.length === 0) {
+      if (photos.length === 0) {
         container.innerHTML = container.dataset.ngfGalleryDefault
         return
       }
@@ -427,16 +462,33 @@ export default function NgfEditBridge() {
       const template = container.lastElementChild as HTMLElement | null
       if (!template) return
 
-      while (container.children.length > urls.length) container.lastElementChild?.remove()
-      while (container.children.length < urls.length) {
+      // Tiles beyond the server-rendered set are clones of the last tile, so
+      // they inherit its alt text; a photo with no alt of its own must not
+      // keep a stranger's description.
+      const originalCount = Number(container.dataset.ngfGalleryDefaultCount ?? container.children.length)
+      if (container.dataset.ngfGalleryDefaultCount === undefined) {
+        container.dataset.ngfGalleryDefaultCount = String(container.children.length)
+      }
+
+      while (container.children.length > photos.length) container.lastElementChild?.remove()
+      while (container.children.length < photos.length) {
         container.appendChild(template.cloneNode(true) as HTMLElement)
       }
 
-      urls.forEach((url, i) => {
+      const coverIndex = Math.max(0, photos.findIndex(p => p.cover === true))
+      photos.forEach((photo, i) => {
         const child = container.children[i] as HTMLElement | undefined
         if (!child) return
         const img = (child.tagName === 'IMG' ? child : child.querySelector('img')) as HTMLImageElement | null
-        if (img) img.setAttribute('src', sanitizeImageUrl(url))
+        if (img) {
+          img.setAttribute('src', sanitizeImageUrl(photo.src))
+          if (photo.alt !== undefined) img.setAttribute('alt', photo.alt)
+          else if (i >= originalCount) img.setAttribute('alt', '')
+        }
+        // The cover tile is marked so the site's own CSS can badge it in edit
+        // mode; the bridge only outlines it (see the stylesheet below).
+        if (i === coverIndex) child.setAttribute('data-ngf-cover', 'true')
+        else child.removeAttribute('data-ngf-cover')
       })
     }
     // Show/hide a whole section from a boolean-ish value: '' or 'true' => shown,
