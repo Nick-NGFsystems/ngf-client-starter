@@ -95,55 +95,109 @@ export function getItems(content: NgfSiteContent, prefix: string): Record<string
 }
 
 /**
- * Read a `gallery` field — an ordered list of image URLs held in ONE scalar.
- *
- * A `data-ngf-group` path must be exactly two segments and item sub-fields are
- * flat scalars, so `products.items.0.photos.0` cannot be expressed — a per-item
- * image LIST is impossible as a group. The gallery type encodes the list as JSON
- * inside a single field instead, so it declares like any other sub-field.
- *
- * Usage — always pass your hardcoded fallback, same contract as `||`:
- *
- *   const photos = getGallery(content, `products.items.${i}.photos`, product.images)
- *
- * Annotate the CONTAINER, not the images, and give it exactly one child per
- * photo — the bridge grows the list by cloning the last child:
- *
- *   <div data-ngf-field={`products.items.${i}.photos`}
- *        data-ngf-label="Photos" data-ngf-type="gallery" data-ngf-section="Products">
- *     {photos.map((src, n) => <div key={n}><img src={src} alt="" /></div>)}
- *   </div>
- *
- * Never throws; returns `fallback` for missing, empty or malformed values.
+ * One photo in a `gallery` field. `alt` is '' when the client wrote none;
+ * exactly one photo in a non-empty list has `cover: true` — the one the client
+ * chose, or the first.
  */
-export function getGallery(
-  content: NgfSiteContent,
-  key: string,
-  fallback: string[] = [],
-): string[] {
-  const raw = content[key]
-  if (typeof raw !== 'string' || raw.trim() === '') return fallback
+export interface NgfPhoto {
+  src: string
+  alt: string
+  cover: boolean
+}
+
+/**
+ * Parse the gallery wire format (mirrors lib/gallery-field.ts in the NGF app):
+ * a JSON array whose entries are a bare URL string or `{ src, alt?, cover? }`.
+ * Never throws; `[]` for anything missing, empty or malformed.
+ */
+function parseNgfGallery(raw: unknown): NgfPhoto[] {
+  if (typeof raw !== 'string' || raw.trim() === '') return []
 
   let parsed: unknown
   try {
     parsed = JSON.parse(raw)
   } catch {
     // Tolerate a bare URL stored before this field type existed.
-    return raw.includes('[') ? fallback : [raw.trim()]
+    return raw.includes('[') ? [] : [{ src: raw.trim(), alt: '', cover: true }]
   }
-  if (!Array.isArray(parsed)) return fallback
+  if (!Array.isArray(parsed)) return []
 
-  const out: string[] = []
+  const out: NgfPhoto[] = []
+  let coverSeen = false
   for (const entry of parsed) {
-    // Accept "url" and { src: "url" } so the format can carry alt text later
-    // without invalidating anything already published.
-    const src =
-      typeof entry === 'string'
-        ? entry
-        : entry && typeof entry === 'object' && typeof (entry as { src?: unknown }).src === 'string'
-          ? (entry as { src: string }).src
-          : null
-    if (src && src.trim() !== '') out.push(src.trim())
+    if (typeof entry === 'string') {
+      if (entry.trim() !== '') out.push({ src: entry.trim(), alt: '', cover: false })
+      continue
+    }
+    if (!entry || typeof entry !== 'object') continue
+    const o = entry as { src?: unknown; alt?: unknown; cover?: unknown }
+    if (typeof o.src !== 'string' || o.src.trim() === '') continue
+    const cover = o.cover === true && !coverSeen
+    if (cover) coverSeen = true
+    out.push({
+      src: o.src.trim(),
+      alt: typeof o.alt === 'string' ? o.alt.trim() : '',
+      cover,
+    })
   }
-  return out.length > 0 ? out : fallback
+  if (out.length > 0 && !coverSeen) out[0].cover = true
+  return out
+}
+
+/**
+ * Read a `gallery` field as photos — src, alt text and which one is the cover.
+ *
+ * A `data-ngf-group` path must be exactly two segments and item sub-fields are
+ * flat scalars, so `products.items.0.photos.0` cannot be expressed — a per-item
+ * image LIST is impossible as a group. The gallery type encodes the list as JSON
+ * inside a single field instead, so it declares like any other sub-field.
+ *
+ * Usage — always pass your hardcoded fallback, same contract as `||`. The
+ * fallback may be plain URLs or full photos; the first is the cover unless one
+ * says otherwise:
+ *
+ *   const photos = getGalleryPhotos(content, `homes.items.${i}.photos`, home.photos)
+ *
+ * Annotate the CONTAINER, not the images, give it exactly one child per photo
+ * (the bridge grows the list by cloning the last child) and render every
+ * photo's alt — the editor writes it:
+ *
+ *   <div data-ngf-field={`homes.items.${i}.photos`}
+ *        data-ngf-label="Photos" data-ngf-type="gallery" data-ngf-section="Homes">
+ *     {photos.map((p, n) => <div key={n}><img src={p.src} alt={p.alt} /></div>)}
+ *   </div>
+ *
+ * Never throws; returns `fallback` (normalised) for missing, empty or malformed
+ * values.
+ */
+export function getGalleryPhotos(
+  content: NgfSiteContent,
+  key: string,
+  fallback: Array<string | { src: string; alt?: string; cover?: boolean }> = [],
+): NgfPhoto[] {
+  const stored = parseNgfGallery(content[key])
+  if (stored.length > 0) return stored
+  return parseNgfGallery(JSON.stringify(fallback))
+}
+
+/** The URLs of a `gallery` field, in order. Use getGalleryPhotos for alt text. */
+export function getGallery(
+  content: NgfSiteContent,
+  key: string,
+  fallback: string[] = [],
+): string[] {
+  return getGalleryPhotos(content, key, fallback).map((p) => p.src)
+}
+
+/**
+ * The one photo to show where only one fits — a card on a listing page, a
+ * project thumbnail, a share image. The client picks it in the editor's Photos
+ * sheet ("Set as cover"); without a pick it is the first photo. `fallback` is
+ * the hardcoded URL for a gallery with nothing stored.
+ *
+ *   <img src={getCover(content, `homes.items.${i}.photos`, home.photos[0])} alt={home.name} />
+ */
+export function getCover(content: NgfSiteContent, key: string, fallback: string): string {
+  const photos = parseNgfGallery(content[key])
+  return photos.find((p) => p.cover)?.src ?? fallback
 }
