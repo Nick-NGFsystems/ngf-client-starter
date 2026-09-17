@@ -1,8 +1,14 @@
 # NGFsystems — Universal Project Standards
 
-<!-- ngf-standards-version: 2.10.0 -->
-**Version 2.10.0 · last updated 2026-09-13.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
+<!-- ngf-standards-version: 2.10.1 -->
+**Version 2.10.1 · last updated 2026-09-17.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
 
+> **2.10.1** — **`vercel.json` is per site; merge its keys, never replace the file.** Copying the
+> starter's `vercel.json` onto a site took one down for six minutes: that Vercel project had no
+> Framework Preset, and the site's own `"framework": "nextjs"` key was the only thing selecting
+> the Next.js builder. Set the Framework Preset on every project (Vercel → Settings → General),
+> and treat `vercel.json` as a place to add the canonical `ignoreCommand`, not a file to sync.
+>
 > **2.10.0** — **ten of eleven sites were on an unpatched Next.js.** Six pinned `15.3.8` (the
 > starter included) and four on `16.1.6`, every one inside the range of CVE-2026-44575, a
 > middleware bypass fixed only in `15.5.16` and `16.2.5`. "Latest (16.x is fine)" was too loose
