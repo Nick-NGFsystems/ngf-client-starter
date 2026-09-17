@@ -473,6 +473,25 @@ has('app/robots.ts') || has('app/robots.js')
   ? ok('app/robots.ts')
   : fail('app/robots.ts', 'Missing — hard blocker in the SEO launch gate.')
 
+// The host a sitemap emits must be the host the site is served on. Two live
+// sites shipped sitemaps under example.com for weeks: their sitemap.ts carried
+// its own `|| 'example.com'` fallback and NEXT_PUBLIC_SITE_URL was never set on
+// the Vercel project, so Google was told their pages lived on example.com and
+// the portal editor (which discovers pages from the sitemap) found nothing it
+// could use. lib/ngf.ts exports siteBaseUrl() — the ONE fallback chain, shared
+// with the content lookup — and sitemap.ts / robots.ts must use it.
+for (const p of ['app/sitemap.ts', 'app/sitemap.js', 'app/robots.ts', 'app/robots.js']) {
+  if (!has(p)) continue
+  const src = stripComments(read(p) ?? '')
+  if (/example\.com/.test(src)) {
+    fail(`Site host in ${p}`, `Contains a literal example.com fallback. Import siteBaseUrl() from lib/ngf.ts instead — with the env var unset this file tells search engines and the portal editor the site lives on example.com.`)
+  } else if (!/siteBaseUrl\s*\(/.test(src)) {
+    warn(`Site host in ${p}`, `Does not use siteBaseUrl() from lib/ngf.ts. A hand-rolled base drifts from the content lookup's fallback chain; run npm run sync-ngf and import it.`)
+  } else {
+    ok(`Site host in ${p}`)
+  }
+}
+
 const hasJsonLd = FILES.some((f) => /application\/ld\+json/.test(f.src))
 hasJsonLd ? ok('Structured data (JSON-LD)') : warn('Structured data (JSON-LD)', 'No LocalBusiness JSON-LD found — required by the SEO launch gate before launch.')
 
