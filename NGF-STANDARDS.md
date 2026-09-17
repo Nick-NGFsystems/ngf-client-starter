@@ -1,8 +1,22 @@
 # NGFsystems — Universal Project Standards
 
-<!-- ngf-standards-version: 2.10.1 -->
-**Version 2.10.1 · last updated 2026-09-17.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
+<!-- ngf-standards-version: 2.11.0 -->
+**Version 2.11.0 · last updated 2026-09-17.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
 
+> **2.11.0** — **the multi-page scrape never ran in production, and seven of nine sitemaps named the
+> wrong host.** An audit of the editor (2026-09-17) found the portal's sitemap fetch rejected
+> `application/xml` and required each `<loc>` to match the site origin exactly, so every live site was
+> scraped as its home page only — one site had 183 editable fields on sub-pages the editor could never
+> show. The portal now reads the sitemap as XML and uses only the PATH of each entry, re-based onto the
+> site's own origin; the app repo's `scripts/scrape-site.ts` prints what the editor will see for any
+> site. On the site side: `sitemap.ts` and `robots.ts` must emit the host the site is served on —
+> `siteBaseUrl()` in `lib/ngf.ts` is the one fallback chain, and the doctor fails a literal
+> `example.com`. Two corrections to this document from the same audit: the bridge does **not**
+> force-reveal hidden containers (sites do that with `[data-ngf-edit="true"]` CSS — see "Edit-mode
+> visibility"), and there is no sidebar on a phone, so photo reordering there is not available yet.
+> New rule: **never nest a `data-ngf-group` inside another group's card** — cloning the outer card
+> duplicates the whole inner gallery.
+>
 > **2.10.1** — **`vercel.json` is per site; merge its keys, never replace the file.** Copying the
 > starter's `vercel.json` onto a site took one down for six minutes: that Vercel project had no
 > Framework Preset, and the site's own `"framework": "nextjs"` key was the only thing selecting
@@ -331,10 +345,21 @@ Upstream now ships security releases roughly monthly. Unpatched-by-default is no
 
 The site renders content with hardcoded fallbacks. At SSR time, every page calls `getNgfContent()` which fetches the client's published content from the NGF portal's public API as a flat dot-notation map. Each editable element renders `content['key'] || hardcoded_fallback` so missing keys gracefully fall through. Every editable element is annotated with `data-ngf-*` attributes so the portal editor can scrape the live HTML, build its sidebar schema dynamically, and route click-to-edit through a small bridge component (`NgfEditBridge`) that sits in `app/layout.tsx`. **There is no schema file to maintain.** The site itself is the schema.
 
-> **The scraper reads every page in your `sitemap.xml`.** It fetches the home page plus each same-origin
-> URL the sitemap declares (up to 12, within a 20s budget), and merges the schemas. **So your `sitemap.xml`
+> **The scraper reads every page in your `sitemap.xml`.** It fetches the home page plus each URL the
+> sitemap declares (up to 12, within a 20s budget), and merges the schemas. **So your `sitemap.xml`
 > is load-bearing** — a page missing from it is invisible to the editor, and the failure is silent: the
 > section simply never appears in the sidebar. Every route with editable content must be listed.
+>
+> **Only the PATH of each `<loc>` is used**, re-based onto the origin the portal is scraping (the
+> client's `site_url`). The host a sitemap names is often not the host the site is served on — the
+> apex while visitors are on `www`, a custom domain that is not live yet, or `example.com` from an old
+> fallback — and none of that hides a page from the editor any more. It still hides pages from Google,
+> so emit the served host: use `siteBaseUrl()` (see "Required env vars").
+>
+> **Check it, don't assume it.** In the `NGF-Systems-app` repo,
+> `node --experimental-strip-types scripts/scrape-site.ts <site>` prints exactly what the editor will
+> see: the pages read, every section and field, and any annotated element the scraper had to drop.
+> Run it before calling a site ready.
 >
 > **No sitemap ⇒ home page only.** The scraper falls back rather than guessing, so a site without one
 > silently loses every sub-page field. `npm run doctor` requires `app/sitemap.ts` for exactly this reason.
@@ -346,7 +371,9 @@ The site renders content with hardcoded fallbacks. At SSR time, every page calls
 >   full grid on `/products` gives the client every row, not whichever page was scraped first.
 >
 > *(Before 2026-08-05 this was a single fetch of the site root and sub-page annotations were unreachable.
-> If you see advice to "put every editable section on `/`", it predates this change.)*
+> Between then and 2026-09-17 the multi-page scrape existed but never ran in production — the sitemap
+> fetch rejected `application/xml` and every `<loc>` had to match the origin exactly. If you see advice
+> to "put every editable section on `/`", it predates both fixes.)*
 
 ### Required files for any new NGF client site
 
@@ -675,15 +702,20 @@ If `NEXT_PUBLIC_SITE_URL` doesn't match the client_configs row, the portal can't
 > content lookup — but `sitemap.ts`, `robots.ts`, `metadataBase` and the JSON-LD builders all
 > interpolate it as `` `https://${raw}` ``. With a protocol in the var you ship `https://https://acme.com`
 > into your sitemap and canonical tags, which is invisible locally and breaks indexing in production.
-> Always guard those interpolations with a strip, exactly as the starter does:
+> Never build that base by hand. `lib/ngf.ts` exports `siteBaseUrl()` — the ONE fallback chain
+> (`NEXT_PUBLIC_SITE_URL`, else Vercel's production URL, else localhost), shared with the content
+> lookup — and `sitemap.ts`, `robots.ts`, `metadataBase` and the JSON-LD builders import it:
 >
 > ```ts
-> const raw  = process.env.NEXT_PUBLIC_SITE_URL || 'example.com'
-> const base = `https://${raw.replace(/^https?:\/\//, '').replace(/\/$/, '')}`
+> import { siteBaseUrl } from '@/lib/ngf'
+> const base = siteBaseUrl()   // https://acme.com — never example.com
 > ```
 >
-> Use `||`, not `??` — an env var that exists but is **blank** (easy to create in the Vercel UI) passes
-> straight through `??` and yields `https://`.
+> The old pattern (`process.env.NEXT_PUBLIC_SITE_URL || 'example.com'`) shipped two live sites whose
+> sitemaps told Google every page lived on example.com, because the env var was never set on the
+> Vercel project and nothing noticed. `npm run doctor` now fails a literal `example.com` in
+> `sitemap.ts` or `robots.ts` and warns when they do not use `siteBaseUrl()`. Inside the helper, `||`
+> not `??` — an env var that exists but is **blank** (easy to create in the Vercel UI) must fall through.
 
 ### Self-describing markup — annotation patterns
 
@@ -1050,7 +1082,7 @@ import { PhotoProvider, PhotoView } from 'react-photo-view'
 
 That's tolerable for "swap a few photos occasionally" workflows. It gets painful for "upload an entire 30-photo gallery from scratch in one session." The first time a client actually hits this wall, build bulk multi-file upload. Until then, set client expectations: "to add many photos at once, expect to do it one at a time — takes maybe a minute per photo."
 
-**Mobile note:** drag-to-reorder uses the HTML5 drag API which doesn't fire on touchscreens. Mobile clients can still replace and delete photos directly, but for reordering they need to use the sidebar's ↑↓ arrows. Future work: add long-press-and-drag handlers for touch.
+**Mobile note:** drag-to-reorder uses the HTML5 drag API which doesn't fire on touchscreens, and the editor has no sidebar below 768 px, so on a phone a client can replace and delete photos but **cannot reorder a card list at all** today. (The `gallery` field type's own popover has ↑↓ arrows and does work on a phone.) Tell clients to reorder from a laptop until the editor's photo sheet ships.
 
 **Things to avoid in large gallery annotations:**
 
@@ -1275,15 +1307,44 @@ If a label genuinely needs to differ between breakpoints, render only the longer
 
 The leaf scraper dedupes individual field annotations (first occurrence wins). The group scraper does not — every `data-ngf-group` declaration becomes a separate sidebar entry.
 
+#### Never nest a `data-ngf-group` inside another group's card
+
+A card list whose cards each contain their own photo gallery *as a second `data-ngf-group`* breaks
+in edit mode: "+ Add" on the outer list clones the last card **including the inner gallery** (its
+group declaration, its 9 to 13 photos, its indices), so the page now has two declarations of the
+same inner group and the bridge re-indexes only the fields that share the outer group's prefix. The
+inner photos keep their old indices, delete and drag act on the wrong tiles, and the sidebar shows
+the duplicate. Found live on a site with four galleries nested inside four service cards.
+
+Per-item photo lists are exactly what the `gallery` **field type** is for: declare `photos` as a
+sub-field of type `gallery` in the outer group's `data-ngf-item-fields`, and annotate the photo
+container with `data-ngf-type="gallery"` — one field, not a group inside a group.
+
 #### Annotate the container or one of its descendants — never both
 
 If a wrapper has `data-ngf-field` AND a child also has `data-ngf-field` for the same path, the bridge gets confused about which one to read/write. Annotate at exactly one level.
 
-#### Edit-mode cosmetic differences are normal
+#### Edit-mode visibility is the SITE's job
 
-The bridge force-reveals containers hidden via `opacity-0`, `pointer-events-none`, `aria-expanded="false"`, etc. when they contain `data-ngf-field` elements — so dropdowns, accordions, and modal panels become editable without site-specific code.
+The bridge does **not** force-reveal hidden containers. *(Earlier versions of this document said it
+revealed anything `opacity-0`, `pointer-events-none` or `aria-expanded="false"`; the 2026-09-17 audit
+read the canonical bridge and found no such rule — only one site-specific selector that has since
+been removed from the contract.)* What the bridge does: it sets `data-ngf-edit="true"` on `<html>` in
+edit mode, and it lets clicks on `<a>`, `<button>` and `aria-expanded` toggles through so a dropdown
+or accordion can be opened by hand.
 
-Side effect: anything with state-dependent styling (e.g. a button that squares off when a dropdown below it opens) will look slightly different in the editor preview than on the live site. **This is cosmetic only.** Published content is unaffected. Don't try to fix it on the client site unless you find a way to do it via `[data-ngf-edit="true"]` selectors that gracefully degrade.
+So a tab panel, an inactive carousel slide, a collapsed accordion or a hover-only menu is editable
+only if the site shows it in edit mode. Do that with CSS keyed on the attribute the bridge sets:
+
+```css
+html[data-ngf-edit='true'] .carousel-slide { display: block; position: static; opacity: 1; }
+html[data-ngf-edit='true'] .tab-panel      { display: block; }
+```
+
+Every slide or panel must also be in the server-rendered HTML (see "Anything not in the
+server-rendered HTML cannot be edited"). Anything with state-dependent styling will look slightly
+different in the editor preview than on the live site; that is cosmetic and published content is
+unaffected.
 
 #### `el.textContent` reads ALL descendants, including hidden ones
 

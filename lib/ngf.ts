@@ -1,8 +1,31 @@
 export type NgfSiteContent = Record<string, string>
 
-function getDomain(): string {
+/**
+ * The host this site is served on, from ONE fallback chain that every
+ * consumer shares: NEXT_PUBLIC_SITE_URL, else the Vercel production URL, else
+ * localhost. sitemap.ts and robots.ts used to keep their own chain ending in
+ * 'example.com', and two live sites shipped sitemaps under that host for weeks
+ * because the env var was never set on their Vercel project. Use `||`, not
+ * `??`: a blank env var (easy to create in the Vercel UI) must fall through.
+ */
+function rawSiteHost(): string {
   const raw = process.env.NEXT_PUBLIC_SITE_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL || 'localhost:3000'
-  return raw.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '')
+  return raw.replace(/^https?:\/\//, '').replace(/\/$/, '')
+}
+
+function getDomain(): string {
+  return rawSiteHost().replace(/^www\./, '')
+}
+
+/**
+ * Absolute public base URL for sitemap.ts, robots.ts, metadataBase and JSON-LD:
+ * `https://acme.com`, `https://acme-mockup.vercel.app`, or `http://localhost:3000`.
+ * Never 'example.com'. Keeps `www.` if the env var has it — this is the URL
+ * search engines get, so it must be the host visitors actually land on.
+ */
+export function siteBaseUrl(): string {
+  const host = rawSiteHost()
+  return host.startsWith('localhost') ? `http://${host}` : `https://${host}`
 }
 
 /**
