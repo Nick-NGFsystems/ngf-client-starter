@@ -1,8 +1,18 @@
 # NGFsystems — Universal Project Standards
 
-<!-- ngf-standards-version: 2.11.0 -->
-**Version 2.11.0 · last updated 2026-09-17.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
+<!-- ngf-standards-version: 2.11.1 -->
+**Version 2.11.1 · last updated 2026-09-17.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
 
+> **2.11.1** — **bridge 1.2.2: phone and email links open the editor, and only the NGF portal can
+> drive the bridge.** A `tel:`, `mailto:` or `sms:` link got the same "Go to page" popup as a real
+> page, and the preview iframe then tried to navigate to `tel:…`, which does nothing — a button that
+> did not work (audit 2026-09-17, P2). The bridge now treats any non-http(s) link like an external
+> one: if it wraps an editable field (the phone number, the email address) the editor opens directly;
+> otherwise nothing happens. The message origin guard, which accepted any `*.vercel.app` page, now
+> accepts only the portal's own preview deployments (`ngf-systems-…-ngf-systems-projects.vercel.app`)
+> besides production and localhost. Sites pick both up with `npm run sync-ngf`. The CSP
+> `frame-ancestors https://*.vercel.app` each site sets is a separate, per-site header, unchanged.
+>
 > **2.11.0** — **the multi-page scrape never ran in production, and seven of nine sitemaps named the
 > wrong host.** An audit of the editor (2026-09-17) found the portal's sitemap fetch rejected
 > `application/xml` and required each `<loc>` to match the site origin exactly, so every live site was
@@ -2506,6 +2516,7 @@ NGF main app additionally:
 | Sticky header scrolls away and never comes back | `overflow-x: hidden` on `html` or `body`. It makes that element a scroll container, so `position: sticky` has nothing to pin against and the header just scrolls off like normal content. Use `overflow-x: clip` — it clips without creating a scroll container. The markup looks correct, so this survives code review; it only shows up when scrolling a real browser |
 | A collapsing header tier flickers rapidly near the top | The tier is in the layout flow, so expanding it changes document height, the browser compensates the scroll offset, and that bounces you back across a single show/hide threshold. Use hysteresis — separate expand and collapse thresholds with a dead zone wider than the tier's height — and keep any "never hide near the top" zone above `collapseThreshold + tierHeight` so the same jump can't spoof scroll-direction detection |
 | Edited a phone/email but the `tel:`/`mailto:` link still goes to the old value | The bridge writes `textContent`; the `href` is server-rendered from the same field and only regenerates on the next publish + page load. Expected — verify after republishing, not in live preview |
+| Clicking a phone number or email address in the preview does nothing, or shows "Go to page" and nothing happens | Bridge older than 1.2.2. Since 1.2.2 a `tel:`/`mailto:` link opens the editor for the field it wraps. `npm run sync-ngf` |
 | Fields on a `[slug]` detail page never appear in the editor sidebar | That route isn't in `sitemap.xml`. The scraper only walks the sitemap, so an unlisted page is invisible to the editor as well as to Google. Make `sitemap.ts` async and emit the dynamic URLs |
 | Stored value renders as empty instead of fallback | You used `??` instead of `||`. Empty strings only fall through with `||` |
 | Editor preview iframe blocked by browser | Missing `frame-ancestors 'self' https://app.ngfsystems.com https://*.vercel.app` in CSP header |

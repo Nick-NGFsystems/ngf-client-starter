@@ -12,7 +12,7 @@ import { useEffect } from 'react'
  * DO NOT hand-edit this file in a client site. Run `npm run sync-ngf` instead —
  * local edits are overwritten and the version then lies about what the code does.
  */
-export const NGF_BRIDGE_VERSION = '1.2.1'
+export const NGF_BRIDGE_VERSION = '1.2.2'
 
 /**
  * NgfEditBridge — enables the NGF portal's live preview and click-to-edit.
@@ -778,10 +778,14 @@ export default function NgfEditBridge() {
 
     const messageHandler = (e: MessageEvent) => {
       // ── Origin guard ────────────────────────────────────────────────────────
-      // Accept messages only from the NGF portal (production or Vercel previews).
+      // Accept messages only from the NGF portal: production, its own Vercel
+      // preview deployments (every one is <project>-…-ngf-systems-projects
+      // .vercel.app), or a local dev server. Until 1.2.2 this accepted ANY
+      // *.vercel.app origin, which let any Vercel-hosted page embed the site
+      // and switch on edit mode or repaint its text for whoever was looking.
       const isNgfOrigin =
         e.origin === 'https://app.ngfsystems.com' ||
-        /^https:\/\/[^.]+\.vercel\.app$/.test(e.origin) ||
+        /^https:\/\/ngf-systems-[a-z0-9-]+-ngf-systems-projects\.vercel\.app$/.test(e.origin) ||
         /^http:\/\/localhost(:\d+)?$/.test(e.origin)
       if (!isNgfOrigin) return
 
@@ -1104,7 +1108,14 @@ export default function NgfEditBridge() {
         }
         if (href && href !== '#') {
           const isExternal = /^https?:\/\//.test(anchor.href) && !anchor.href.startsWith(window.location.origin)
-          if (isExternal) {
+          // tel:, mailto:, sms: and the like are not pages. Until 1.2.2 they
+          // got the same "Go to page" popup as a real link, and the iframe
+          // then tried to navigate to tel:… — which does nothing, so the
+          // client saw a button that did not work. Treat them as external:
+          // open the editor for the wrapped field (a phone number or email
+          // address is the usual case), otherwise nothing.
+          const isNotAPage = !/^https?:/i.test(anchor.href)
+          if (isExternal || isNotAPage) {
             // External links never navigate the editor iframe — if the link
             // wraps an editable field (e.g. a nav label), open the edit
             // popover directly; otherwise block silently.
