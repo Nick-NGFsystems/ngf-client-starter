@@ -771,6 +771,73 @@ for (const f of FILES) {
   }
 }
 
+// ── 8c. Product catalog (only when this site sells) ──────────────────────────
+//
+// A catalog is the ONE loader on an NGF site that must fail CLOSED. Every other
+// one falls back on purpose — a hero with no headline still renders something,
+// and store settings fall back to zeroes because charging no postage is
+// recoverable. A product that is shown but does not exist is not recoverable,
+// because a customer can try to buy it.
+//
+// These three checks are the three ways that goes wrong, all of them observed:
+// fetching uncached, keeping a second copy of the catalog in the repo, and
+// leaving the product's own fields editable as portal CONTENT beside it.
+const catalogRaw = read('lib/ngf-catalog.ts')
+const catalogSrc = catalogRaw === null ? null : stripComments(catalogRaw)
+const isCatalogLib = (p) => /lib[\\/]ngf-catalog\.ts$/.test(p)
+const catalogConsumers = FILES.filter(
+  (f) => !isCatalogLib(f.path) && /from\s+['"][^'"]*lib\/ngf-catalog['"]/.test(f.src),
+)
+
+if (catalogSrc) {
+  // 1. Caching — the same rule as content. A shop's product pages are its
+  // highest-traffic pages; uncached, every one of them is a portal round trip.
+  if (/cache:\s*['"]no-store['"]/.test(catalogSrc)) {
+    fail('Catalog cache mode', "lib/ngf-catalog.ts uses cache:'no-store' — that hits the portal on EVERY product pageview. Use next:{revalidate:60,tags:['ngf-catalog']}.")
+  } else if (/next:\s*\{[^}]*revalidate:\s*\d+/.test(catalogSrc)) {
+    ok('Catalog cache mode', 'ISR revalidate is configured.')
+  } else {
+    warn('Catalog cache mode', 'Could not find a revalidate option in lib/ngf-catalog.ts — verify it is not fetching uncached.')
+  }
+  if (!/tags:\s*\[\s*['"]ngf-catalog['"]/.test(catalogSrc)) {
+    warn('Catalog cache tag', "Fetch is missing tags:['ngf-catalog'] — a price the client publishes will wait out the full revalidate window instead of appearing at once.")
+  }
+
+  // 2. ONE source. A repo array beside the portal catalog is the bug the
+  // catalog was built to remove: the two agree most of the time, so the
+  // disagreement is found by a customer rather than by a test. The repo copy is
+  // also the dangerous half — it keeps selling a product after the client has
+  // withdrawn it.
+  const hardcoded = FILES.filter((f) => !isCatalogLib(f.path) && /:\s*CatalogProduct\[\]\s*=\s*\[/.test(f.src))
+  if (hardcoded.length) {
+    fail('Catalog has one source', `${hardcoded.map((f) => f.path).join(', ')} declares a CatalogProduct[] of its own alongside the portal catalog. Delete it — getCatalog() is the only seam.`)
+  } else if (/FALLBACK_CATALOG|FALLBACK_PRODUCTS/.test(catalogSrc)) {
+    fail('Catalog fails closed', 'lib/ngf-catalog.ts carries a fallback catalog. An unreachable portal must render an EMPTY shelf, never a stale one.')
+  } else {
+    ok('Catalog fails closed', 'One source, and no bundled fallback to serve stale.')
+  }
+
+  // 3. A catalog field must not ALSO be an editable content field. When the
+  // catalog moved to the portal, the grids kept overlaying name/description/
+  // image from content (`ci.name || product.name`). Left in place that is two
+  // sources of truth for one value — quieter than the original bug, because
+  // they agree until the day they do not.
+  const OVERLAY_FIELDS = ['name', 'title', 'description', 'image', 'price']
+  const overlaid = []
+  for (const f of catalogConsumers) {
+    for (const m of f.src.matchAll(/data-ngf-item-fields=(?:"([^"]*)"|'([^']*)'|\{`([^`]*)`\}|\{"([^"]*)"\}|\{'([^']*)'\})/g)) {
+      const json = m[1] || m[2] || m[3] || m[4] || m[5] || ''
+      const hits = OVERLAY_FIELDS.filter((k) => new RegExp(`["']${k}["']`).test(json))
+      if (hits.length) overlaid.push(`${f.path} (${hits.join(', ')})`)
+    }
+  }
+  if (overlaid.length) {
+    fail('Catalog fields are not editor content', `${overlaid.join('; ')} — those fields come from the catalog. Drop them from data-ngf-item-fields and remove the content overlay, or the site has two sources of truth for one price.`)
+  } else if (catalogConsumers.length) {
+    ok('Catalog fields are not editor content', `${catalogConsumers.length} file(s) read the catalog; none overlay it from content.`)
+  }
+}
+
 // ── 9. Env wiring ────────────────────────────────────────────────────────────
 const envExample = read('.env.local.example') ?? read('.env.example') ?? ''
 const envDocs = envExample + (read('README.md') ?? '')
