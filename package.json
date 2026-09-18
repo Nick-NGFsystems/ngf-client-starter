@@ -11,7 +11,8 @@
     "doctor:strict": "node scripts/ngf-doctor.mjs --strict",
     "verify-orders": "node scripts/ngf-verify-orders.mjs",
     "sync-ngf": "node scripts/sync-ngf.mjs",
-    "sync-ngf:check": "node scripts/sync-ngf.mjs --check"
+    "sync-ngf:check": "node scripts/sync-ngf.mjs --check",
+    "test:deploy-rule": "bash scripts/vercel-skip-docs.test.sh"
   },
   "dependencies": {
     "next": "15.5.25",
