@@ -22,8 +22,15 @@
 # to exit 1 (build). Skipping is the only outcome that must be
 # proven; building is always the safe default.
 #
-# Docs-only means: any .md anywhere, .github/*, .gitignore, .gitattributes,
-# LICENSE, and this script itself.
+# Docs-only means: any .md anywhere, .github/*, .gitignore, .gitattributes and
+# LICENSE.
+#
+# This script is deliberately NOT excluded from its own diff any more. It used
+# to be, on the reasoning that changing the deploy rule does not change the
+# site. True, but it made a FIX to this file land silently and never take
+# effect on the next deploy either — the change that most needs to be seen
+# working was the one change guaranteed not to run. A rebuild costs a minute;
+# a deploy rule that quietly does the wrong thing costs a lot more (2026-09-18).
 #
 # IMPORTANT: this file MUST have LF line endings (.gitattributes enforces it).
 # CRLF makes bash fail on every line and every deploy fails.
@@ -86,8 +93,7 @@ if git diff --quiet "$base" HEAD -- . \
   ':(exclude).gitignore' \
   ':(exclude).gitattributes' \
   ':(exclude)LICENSE' \
-  ':(exclude).github/**' \
-  ':(exclude)scripts/vercel-skip-docs.sh'; then
+  ':(exclude).github/**'; then
   echo "vercel-skip-docs: only docs changed since ${base} — skipping build"
   exit 0
 fi

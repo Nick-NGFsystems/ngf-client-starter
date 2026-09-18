@@ -10,8 +10,11 @@
 > variable and hitting Redeploy therefore did nothing, silently, and the site stayed on the old build
 > without the variable. Found when a client's Meta Pixel ID would not take. The rule now builds whenever
 > the base equals HEAD: nobody redeploys an unchanged commit except to pick up something git cannot see.
-> `npm run test:deploy-rule` drives the real script against a real throwaway repo (6 cases) — run it
-> after ANY edit to that file, and remember it is `mode: 'canonical'`, so every site gets it by sync.
+> The rule also no longer excludes ITSELF from the diff: it used to, so a fix to the deploy rule landed
+> silently and did not rebuild — the one change that most needs to be seen working was the one change
+> guaranteed not to run. `npm run test:deploy-rule` drives the real script against a real throwaway repo
+> (7 cases) — run it after ANY edit to that file, and remember it is `mode: 'canonical'`, so every site
+> gets it by sync.
 >
 > **2.12.0** — **one photo-collection model: the `gallery` field, now with a description and a cover
 > per photo.** The wire format grows from bare URLs to `{ src, alt?, cover? }` entries; a plain photo

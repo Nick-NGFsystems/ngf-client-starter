@@ -39,6 +39,9 @@ run "base is an unresolvable sha"                               1 "deadbeefdeadb
 # docs-only: roll HEAD back to the docs commit so base->HEAD is docs only
 git checkout -q "$C2_DOCS"
 run "only docs changed since base (the skip this exists for)"   0 "$C1"
+git checkout -q "$C3_CODE"
+printf '\n# touched\n' >> scripts/vercel-skip-docs.sh; git commit -qam rule; C4_RULE=$(git rev-parse HEAD)
+run "a change to the deploy rule itself builds"                 1 "$C3_CODE"
 run "redeploy at a docs commit still builds"                    1 "$C2_DOCS"
 rm -rf "$T"
 echo; echo "$pass passed, $fail failed"; [ "$fail" -eq 0 ]
