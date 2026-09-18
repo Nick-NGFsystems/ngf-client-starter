@@ -1,8 +1,18 @@
 # NGFsystems — Universal Project Standards
 
-<!-- ngf-standards-version: 2.12.0 -->
-**Version 2.12.0 · last updated 2026-09-17.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
+<!-- ngf-standards-version: 2.12.1 -->
+**Version 2.12.1 · last updated 2026-09-18.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
 
+> **2.12.1** — **a manual redeploy was always cancelled, on every property.** `scripts/vercel-skip-docs.sh`
+> skips a build when nothing but docs changed since the last deployment. Vercel sets that comparison base
+> to the previously deployed commit, so a Redeploy of an unchanged commit diffed a commit against itself,
+> saw nothing, and cancelled — which is precisely the build someone asked for. Changing an environment
+> variable and hitting Redeploy therefore did nothing, silently, and the site stayed on the old build
+> without the variable. Found when a client's Meta Pixel ID would not take. The rule now builds whenever
+> the base equals HEAD: nobody redeploys an unchanged commit except to pick up something git cannot see.
+> `npm run test:deploy-rule` drives the real script against a real throwaway repo (6 cases) — run it
+> after ANY edit to that file, and remember it is `mode: 'canonical'`, so every site gets it by sync.
+>
 > **2.12.0** — **one photo-collection model: the `gallery` field, now with a description and a cover
 > per photo.** The wire format grows from bare URLs to `{ src, alt?, cover? }` entries; a plain photo
 > is still a bare string, so nothing already published changes. The editor's **Photos** sheet shows a

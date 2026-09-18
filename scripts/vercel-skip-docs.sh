@@ -56,6 +56,22 @@ fi
 
 base="$VERCEL_GIT_PREVIOUS_SHA"
 
+# A manual redeploy re-runs this against the SAME commit it already deployed,
+# so the diff below is empty and the docs-only rule fires — cancelling the one
+# build the operator explicitly asked for. Nobody redeploys an unchanged commit
+# except to pick up something OUTSIDE the repo: a new or rotated environment
+# variable, a changed project setting. Those are invisible to git, so the diff
+# can never justify a skip here. Build.
+#
+# Found 2026-09-18: setting NEXT_PUBLIC_FB_PIXEL_ID on a client project and
+# hitting Redeploy silently cancelled, leaving the site on the old build with
+# the variable missing. It would have done that on every property, this repo
+# and the NGF app included.
+if [ "$base" = "$(git rev-parse HEAD 2>/dev/null)" ]; then
+  echo "vercel-skip-docs: redeploy of ${base} with no new commit — building (configuration may have changed)"
+  exit 1
+fi
+
 if ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
   git fetch -q --depth=100 origin main 2>/dev/null || true
 fi
