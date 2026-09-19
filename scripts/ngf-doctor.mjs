@@ -16,7 +16,7 @@
  */
 
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
-import { join, relative, extname, dirname } from 'node:path'
+import { join, relative, extname, dirname, sep } from 'node:path'
 
 const ROOT = process.cwd()
 const STRICT = process.argv.includes('--strict')
@@ -41,6 +41,16 @@ const stripComments = (s) =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/(^|[^:'"\\])\/\/.*$/gm, '$1')
 
+/**
+ * Every path regex in this file is written with forward slashes, so walker output
+ * must be POSIX before it is matched. join() emits backslashes on Windows, which
+ * is the primary dev machine: an un-normalised path made the "Dynamic routes in
+ * sitemap" check match nothing and report a vacuous pass, while the same repo
+ * failed correctly on Vercel. A check that cannot fire locally is worse than no
+ * check, so normalise once here rather than per-regex.
+ */
+const toPosix = (p) => p.split(sep).join('/')
+
 /** All source files under app/ and components/, excluding the legacy site/ dir. */
 function sourceFiles() {
   const out = []
@@ -53,7 +63,7 @@ function sourceFiles() {
       let st
       try { st = statSync(join(ROOT, rel)) } catch { continue }
       if (st.isDirectory()) walk(rel)
-      else if (['.ts', '.tsx', '.js', '.jsx'].includes(extname(e))) out.push(rel)
+      else if (['.ts', '.tsx', '.js', '.jsx'].includes(extname(e))) out.push(toPosix(rel))
     }
   }
   walk('app')
