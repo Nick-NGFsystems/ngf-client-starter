@@ -2756,7 +2756,7 @@ plaintext column today; a payment credential must not follow it there.
 | File | Mode | What it is |
 |---|---|---|
 | `lib/ngf-order.ts` | canonical | The `OrderReportV1` contract + `reportOrderToNgf()`. A drifted copy mis-reports real money. |
-| `lib/ngf-store.ts` | canonical | Client-owned shipping/tax fetched from the portal, and the `quote()` formula NGF re-checks on ingest. |
+| `lib/ngf-store.ts` | canonical | Client-owned shipping (flat charge, price bands, free threshold) and tax fetched from the portal, and the `quote()` formula NGF re-checks on ingest — mirrored by `quoteOrder` in the NGF app's `lib/store-settings.ts`; change both together. |
 | `scripts/ngf-verify-orders.mjs` | canonical | Proves the wiring before a real order. |
 | `lib/square-checkout.ts` | once | Square adapter. Replace wholesale for another provider; `lib/ngf-order.ts` does not change. |
 
