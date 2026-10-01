@@ -164,10 +164,12 @@ if (domain) {
     if (!res.ok || !s) {
       fail(`Store settings endpoint returned ${res.status}`)
     } else {
-      const configured = s.shippingFlatCents > 0 || s.shippingFreeOverCents !== null || (s.taxRules ?? []).length > 0
+      const bands = Array.isArray(s.shippingTiers) ? s.shippingTiers : []
+      const configured = s.shippingFlatCents > 0 || s.shippingFreeOverCents !== null || bands.length > 0 || (s.taxRules ?? []).length > 0
       if (configured) {
         pass('Store settings are configured',
              `shipping ${(s.shippingFlatCents / 100).toFixed(2)}` +
+             (bands.length > 0 ? ` (bands: ${bands.map((b) => `under ${(b.underCents / 100).toFixed(2)} → ${(b.feeCents / 100).toFixed(2)}`).join(', ')})` : '') +
              (s.shippingFreeOverCents !== null ? `, free over ${(s.shippingFreeOverCents / 100).toFixed(2)}` : ', never free') +
              `, tax rules: ${(s.taxRules ?? []).map((r) => `${r.state} ${r.ratePercent}%`).join(', ') || 'none'}`)
       } else {

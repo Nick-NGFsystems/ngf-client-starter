@@ -19,11 +19,24 @@ export interface TaxRule {
   ratePercent: number
 }
 
+/**
+ * A shipping price band: an order whose subtotal is UNDER `underCents` pays
+ * `feeCents`. With several bands the lowest one the order fits under wins; an
+ * order above every band pays the flat charge; free shipping is checked first.
+ */
+export interface ShippingTier {
+  underCents: number
+  feeCents: number
+}
+
 export interface StoreSettings {
   currency: string
+  /** Postage for an order no band covers (below the free threshold). */
   shippingFlatCents: number
   /** Null = shipping is never free. */
   shippingFreeOverCents: number | null
+  /** Price bands. Empty (or absent, from an older portal) = every order pays shippingFlatCents. */
+  shippingTiers: ShippingTier[]
   shippingLabel: string
   taxRules: TaxRule[]
   taxAppliesShipping: boolean
@@ -42,6 +55,7 @@ export const FALLBACK_SETTINGS: StoreSettings = {
   currency: 'USD',
   shippingFlatCents: 0,
   shippingFreeOverCents: null,
+  shippingTiers: [],
   shippingLabel: 'Shipping',
   taxRules: [],
   taxAppliesShipping: true,
@@ -102,7 +116,7 @@ export function quote(
   const shippingCents =
     subtotalCents === 0 || (freeOver !== null && subtotalCents >= freeOver)
       ? 0
-      : settings.shippingFlatCents
+      : bandFee(subtotalCents, settings)
 
   const destination = (state ?? '').trim().toUpperCase()
   const rule = settings.taxRules.find((r) => r.state === destination)
@@ -118,6 +132,23 @@ export function quote(
     taxCents,
     totalCents: subtotalCents + shippingCents + taxCents,
   }
+}
+
+/**
+ * Postage for an order that is not free: the fee of the lowest price band the
+ * subtotal is under, else the flat charge. Mirrored in the NGF app's
+ * lib/store-settings.ts. Bands are re-checked here rather than trusted, so a
+ * malformed one is skipped, never charged — and an absent list (an older portal
+ * that sends none) is simply no bands.
+ */
+function bandFee(subtotalCents: number, settings: StoreSettings): number {
+  const bands = Array.isArray(settings.shippingTiers) ? settings.shippingTiers : []
+  let best: ShippingTier | null = null
+  for (const band of bands) {
+    if (!band || !Number.isInteger(band.underCents) || !Number.isInteger(band.feeCents) || band.feeCents < 0) continue
+    if (subtotalCents < band.underCents && (best === null || band.underCents < best.underCents)) best = band
+  }
+  return best ? best.feeCents : settings.shippingFlatCents
 }
 
 export function formatCents(cents: number): string {
