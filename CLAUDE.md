@@ -21,10 +21,31 @@ That doc has:
 
 ---
 
+## Working here as a teammate
+
+NGF is Nick (the owner) plus teammates who work through Claude Code. These rules hold in every session.
+
+- **Always a branch.** Start a `claude/<short-name>` branch from a fresh `origin/main`. Never commit or push to `main`: on a client repo a push to `main` deploys the client's live site (in this starter, `main` is what every client's `npm run sync-ngf` pulls).
+- **PR, then preview.** Push your branch (`git push -u origin <branch>`), open a PR, and check its Vercel preview. Say in the PR what you checked and what you could not.
+- **Nick merges.** He reviews every PR and merges it. Don't merge, promote a preview, or run `vercel --prod`. The `github-push.py` recipe in NGF-STANDARDS.md is Nick's tool, not part of this flow.
+- **No real secrets in the repo.** No real env values, API keys or tokens in code, `NOW.md` or a PR. Real values live in Vercel; `.env.local` stays on your machine.
+- **No real emails or texts while testing.** Lead forms, bookings and orders send real email and SMS to the client and their customers. Don't submit a real form, booking or order to test, live or on a preview; ask Nick for test mode or the testbed.
+- **`NOW.md` first.** Read it at the start. It is the project's state in under ~15 lines: status, what's live, next step, what it waits on, open branches/PRs. Overwrite it, never append (git is the history). Say **"wrap up"** at the end and Claude updates `NOW.md` on your branch, commits and pushes.
+- **Work items live in the NGF app.** A client's to-dos are Project steps in the NGF app. Take the step before you start; when you stop, hand it back with a short "where it's at" note (done, what's left, what's blocked).
+
+**Client in the NGF app.** Every client repo carries this line (fill it in when forking):
+
+`NGF client id: <fill in>`
+
+Once `client_brief` is available in the `ngf-systems` MCP: at the start of a session, if that MCP is connected, call `client_brief` with this id for the client's people, open steps and requests.
+
+---
+
 ## Setup checklist (complete when forking this repo)
 
 - [ ] Rename the repo to the client's project name
 - [ ] Update `package.json` `name` field
+- [ ] Fill in `NGF client id` under "Working here as a teammate", and add a `NOW.md`
 - [ ] **Delete `NGF-STANDARDS.md` from your fork.** It is canonical *here* and stale everywhere else — always fetch the raw URL. `npm run doctor` fails if a fork keeps a full copy.
 - [ ] **Check `vercel.json` has no `"git": { "deploymentEnabled": false }`** — that key belongs only to the template repo, and a fork that inherits it silently never deploys
 - [ ] **`npm run sync-ngf`** — pull the canonical bridge / `lib/ngf.ts` / `LeadForm` / `CookieConsent` / doctor. Do this first and never hand-edit what it writes.
