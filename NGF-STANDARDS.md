@@ -1,8 +1,15 @@
 # NGFsystems — Universal Project Standards
 
-<!-- ngf-standards-version: 2.12.1 -->
-**Version 2.12.1 · last updated 2026-09-18.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
+<!-- ngf-standards-version: 2.13.0 -->
+**Version 2.13.0 · last updated 2026-11-25.** AI sessions fetch this file from a raw URL — check this line first; if your copy is older than the canonical one, re-fetch before relying on it.
 
+> **2.13.0** — **cold pitches and form bots no longer reach the client's inbox.** The central lead
+> store now screens content: a submission that reads as a sales pitch or a bot is saved with status
+> **Spam** (portal Spam chip, hidden from "All") and no NGF email is sent. `relayLeadToNgf()` returns
+> `{ ok, spam }`; a bespoke route MUST skip its own notification when `spam` is true, and every
+> bespoke form MUST carry the `_gotcha` honeypot (it was required for `<LeadForm>` only in practice).
+> Re-sync `lib/ngf-lead.ts` (`npm run sync-ngf`). See "Spam screening" under Lead capture.
+>
 > **2.12.1** — **a manual redeploy was always cancelled, on every property.** `scripts/vercel-skip-docs.sh`
 > skips a build when nothing but docs changed since the last deployment. Vercel sets that comparison base
 > to the previously deployed commit, so a Redeploy of an unchanged commit diffed a commit against itself,
@@ -2206,8 +2213,8 @@ Call it inside the route they already have, **before** the notification email:
 ```ts
 import { relayLeadToNgf } from '@/lib/ngf-lead'
 
-await relayLeadToNgf('contact', parsed.data)   // persist first
-await sendContactNotification(parsed.data)      // existing email, unchanged
+const { spam } = await relayLeadToNgf('contact', parsed.data)   // persist first
+if (!spam) await sendContactNotification(parsed.data)            // existing email, unchanged
 ```
 
 **Do not rip out a live client's form to swap in `<LeadForm>`.** One site's form has ten
@@ -2215,7 +2222,7 @@ fields, six dropdowns, and both its labels *and* its option values are portal-ed
 content; another sends a branded HTML email with a project-details table the owner actually
 reads. A wholesale swap silently removes capability the business depends on. The relay is
 deliberately additive — existing validation, email and success/error UX are untouched — and
-it **never throws** (every path returns `{ ok }`), so it cannot make a live submission worse
+it **never throws** (every path returns `{ ok, spam }`), so it cannot make a live submission worse
 than it is today.
 
 ### Client emails are unaffected — say so plainly
@@ -2231,6 +2238,26 @@ Every submission appears in the client's portal under **Form Submissions**
 by status, work each enquiry through **New → Contacted → Won / Lost / Archived**, and keep a
 private note per lead. Enable the toggle when you launch a site with a form — otherwise the
 leads accumulate where only you can see them.
+
+### Spam screening: quarantine, never drop
+
+The central store screens every submission that gets past the honeypot (scored rules in the
+NGF app's `lib/lead-screening.ts`). A sales pitch or a bot is **saved** with status **Spam** and
+no notification email goes out; the owner can move it back to New in the portal. Nothing is
+silently discarded, so a false positive costs a click, never an enquiry.
+
+- **Every form carries the `_gotcha` honeypot**, bespoke ones included: a visually hidden,
+  `tabIndex={-1}`, `autoComplete="off"` input that the route passes through to the relay (or
+  checks itself). `<LeadForm>` already does.
+- **A bespoke route honours the verdict.** `relayLeadToNgf()` returns `{ ok, spam }`. When
+  `spam` is true, skip the site's own notification email and return the normal success
+  response, so the sender learns nothing. When the relay failed (`ok: false`), send the email
+  as before: an unknown verdict is never spam.
+- **Do not add a site-side drop rule** (timing checks, keyword lists) that discards a
+  submission before it is relayed. A dropped lead is unrecoverable; tune the central rules
+  instead, with a let-through case for every new catch.
+- A visible captcha (e.g. Turnstile) is a last resort for a site that keeps getting through:
+  it costs real customers effort and needs CSP changes.
 
 > **Enforced, not just documented.** `npm run doctor` fails a site whose route takes customer
 > details without relaying — and it detects *both* failure shapes, including the
