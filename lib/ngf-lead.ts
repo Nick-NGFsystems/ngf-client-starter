@@ -17,9 +17,14 @@
  * CONTRACT:
  * - Call it BEFORE sending your notification email (persist first, notify
  *   second — see the "Lead capture: persist first" standard).
- * - It NEVER throws. Every path returns { ok } — no domain configured, non-2xx,
- *   network error, timeout. So it can never make an existing submission worse
- *   than it is today; your email still goes out.
+ * - It NEVER throws. Every path returns { ok, spam } — no domain configured,
+ *   non-2xx, network error, timeout. So it can never make an existing
+ *   submission worse than it is today; your email still goes out.
+ * - `spam: true` means the central store saved the lead but its content screen
+ *   marked it as a sales pitch or a bot (status Spam in the portal, no NGF
+ *   email). Skip your own notification email too, and still show the customer
+ *   the normal success state. Anything short of an explicit `spam: true`
+ *   (failed relay, unreadable reply) is NOT spam: send your email as before.
  * - It resolves the client from NEXT_PUBLIC_SITE_URL, so that value must match
  *   `site_url` in the NGF admin exactly (the same pairing the content API uses).
  *   If it doesn't, this logs loudly and the lead never reaches the portal —
@@ -28,7 +33,7 @@
 export async function relayLeadToNgf(
   formType: string,
   payload: Record<string, unknown>,
-): Promise<{ ok: boolean }> {
+): Promise<{ ok: boolean; spam: boolean }> {
   try {
     const base = process.env.NGF_APP_URL || 'https://app.ngfsystems.com'
     const raw = process.env.NEXT_PUBLIC_SITE_URL || ''
@@ -36,7 +41,7 @@ export async function relayLeadToNgf(
 
     if (!domain) {
       console.error('[ngf-lead] NEXT_PUBLIC_SITE_URL is not set — lead not relayed to the portal')
-      return { ok: false }
+      return { ok: false, spam: false }
     }
 
     const res = await fetch(`${base}/api/public/leads`, {
@@ -50,11 +55,13 @@ export async function relayLeadToNgf(
 
     if (!res.ok) {
       console.error('[ngf-lead] relay rejected', { status: res.status, formType })
-      return { ok: false }
+      return { ok: false, spam: false }
     }
-    return { ok: true }
+    // Saved. Read the verdict; an unreadable body just means "not spam".
+    const body = (await res.json().catch(() => null)) as { spam?: unknown } | null
+    return { ok: true, spam: body?.spam === true }
   } catch (err) {
     console.error('[ngf-lead] relay failed (submission continues)', err)
-    return { ok: false }
+    return { ok: false, spam: false }
   }
 }
